@@ -46,7 +46,23 @@ self.onmessage = async (e) => {
                 );
                 self.postMessage({ type: 'model-loaded', payload: { device: 'wasm (fallback)' } });
             } catch (fallbackErr) {
-                self.postMessage({ type: 'error', payload: fallbackErr.message });
+                console.warn('[Worker] Falha no wasm para o modelo original. Tentando fallback para modelo Tiny...', fallbackErr);
+                try {
+                    const fallbackModel = 'Xenova/whisper-tiny';
+                    transcriber = await pipeline(
+                        'automatic-speech-recognition',
+                        fallbackModel,
+                        {
+                            device: 'wasm',
+                            progress_callback: (data) => {
+                                self.postMessage({ type: 'model-progress', payload: data });
+                            },
+                        }
+                    );
+                    self.postMessage({ type: 'model-loaded', payload: { device: 'wasm (fallback tiny)' } });
+                } catch (tinyErr) {
+                    self.postMessage({ type: 'error', payload: 'Falha fatal: Não foi possível carregar nenhum modelo. ' + tinyErr.message });
+                }
             }
         }
     }

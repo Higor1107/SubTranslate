@@ -47,9 +47,9 @@ export async function extractAudio(videoFile, onProgress) {
     } catch (err) {
         audioContext.close();
         throw new Error(
-            'Não foi possível decodificar o áudio. ' +
-            'Formatos suportados: MP4, WebM, OGG, WAV, MP3. ' +
-            'Se seu arquivo é MKV ou AVI, converta para MP4 primeiro.'
+            'Não foi possível decodificar o áudio. Formatos suportados: MP4, WebM, OGG, WAV, MP3. ' +
+            'Se seu arquivo é MKV ou AVI, converta para MP4 primeiro.',
+            { cause: err }
         );
     }
 

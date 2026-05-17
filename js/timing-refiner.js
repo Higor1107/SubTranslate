@@ -19,6 +19,13 @@ const CHARS_PER_SEC = 15;         // Velocidade de fala
 
 // ─── Pass 1: Ajustar duração ────────────────────────────────
 
+/**
+ * Ajusta a duração dos segmentos baseando-se na densidade de caracteres.
+ * Corta durações absurdamente longas e estende durações muito curtas para legibilidade.
+ * 
+ * @param {Array<{start: number, end: number, text: string}>} segments - Lista original de segmentos.
+ * @returns {Array<{start: number, end: number, text: string}>} Nova lista com tempos ajustados.
+ */
 function adjustDuration(segments) {
     return segments.map(seg => {
         const duration = seg.end - seg.start;
@@ -49,6 +56,13 @@ function adjustDuration(segments) {
 
 // ─── Pass 2: Resolver sobreposições ─────────────────────────
 
+/**
+ * Remove qualquer sobreposição temporal entre segmentos adjacentes.
+ * Comprime o tempo das legendas caso elas se encavalem.
+ * 
+ * @param {Array<{start: number, end: number, text: string}>} segments - Segmentos para resolver.
+ * @returns {Array<{start: number, end: number, text: string}>} Lista de segmentos linearizados sem sobreposição.
+ */
 function resolveOverlaps(segments) {
     if (segments.length < 2) return segments;
     const out = [{ ...segments[0] }];
@@ -80,10 +94,17 @@ function resolveOverlaps(segments) {
 
 // ─── Pass 3: Limpeza de Texto e Remover inválidos ────────────────
 
+/**
+ * Remove tags de ruído do texto geradas pelo Whisper (ex: [Música], ♪).
+ * Limpa repetições de frases geradas por falhas de janela de inferência.
+ * 
+ * @param {string} text - Texto bruto gerado pela IA.
+ * @returns {string} Texto limpo para leitura humana.
+ */
 function cleanText(text) {
     if (!text) return '';
     
-    // 1. Remover tags de ruído/música como [Música], (Música), [risos], ♪
+    // 1. Remover tags de ruído/música como [Música], (Música), [risos], ♪ e alucinações comuns do Whisper Base
     let cleaned = text.replace(/\[.*?\]|\(.*?\)|♪/g, '').trim();
     
     // 2. Resolver repetições dentro do mesmo segmento (ex: "Haverá perda. Haverá perda.")
@@ -114,6 +135,12 @@ function cleanText(text) {
     return cleaned;
 }
 
+/**
+ * Filtra segmentos que não contém texto utilizável ou são curtos demais para leitura.
+ * 
+ * @param {Array<{start: number, end: number, text: string}>} segments
+ * @returns {Array<{start: number, end: number, text: string}>}
+ */
 function trimInvalid(segments) {
     return segments.map(seg => ({
         ...seg,
@@ -126,6 +153,13 @@ function trimInvalid(segments) {
 
 // ─── Pass 4: Remover Hallucinations/Duplicatas (Entre Segmentos) ──────
 
+/**
+ * Descarta segmentos inteiros que são idênticos ao anterior temporalmente.
+ * Isso resolve "loop hallucinations" do Whisper em trechos longos de música/silêncio.
+ * 
+ * @param {Array<{start: number, end: number, text: string}>} segments 
+ * @returns {Array<{start: number, end: number, text: string}>}
+ */
 function filterHallucinations(segments) {
     if (!segments.length) return segments;
     const out = [];
@@ -155,6 +189,12 @@ function filterHallucinations(segments) {
 
 // ─── Pipeline Principal ─────────────────────────────────────
 
+/**
+ * Orquestra todos os passos de refinamento de tempo e texto dos segmentos de fala.
+ * 
+ * @param {Array<{start: number, end: number, text: string, index?: number}>} segments - Dados brutos da IA.
+ * @returns {Array<{start: number, end: number, text: string, index: number}>} Pipeline finalizado.
+ */
 export function refineTimings(segments) {
     if (!segments.length) return segments;
 

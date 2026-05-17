@@ -17,11 +17,23 @@ O **SubTranslate** é uma aplicação web 100% client-side que transcreve, tradu
 | **IA/Transcrição** | Transformers.js + Whisper | `@xenova/transformers@2.17.2` via CDN | Speech-to-text com timestamps |
 | **Thread Separada** | Web Workers | Nativo | Inferência Whisper off-thread |
 | **Extração de Áudio** | Web Audio API | Nativo | Decodificação e reamostragem para 16kHz mono |
-| **Tradução** | Google Translate API | `translate.googleapis.com` | Tradução contextual por blocos |
+| **Tradução** | Multi-Engine (ChatGPT, DeepL, Google) | APIs externas | Tradução contextual com fallback automático |
 | **Geração de Legendas** | JavaScript puro | — | Formatação SRT e VTT |
 | **Gravação de Legendas** | WebCodecs API | `VideoEncoder` + `AudioEncoder` | Codificação H.264 + AAC |
 | **Muxing MP4** | mp4-muxer | `@5.2.2` via CDN | Empacotamento das tracks em container MP4 |
 | **Hospedagem** | GitHub Pages | — | Deploy estático automático |
+
+### Stack de Desenvolvimento
+
+| Ferramenta | Função |
+|-----------|--------|
+| **Node.js 18+** | Runtime para ferramentas de desenvolvimento (não afeta a produção) |
+| **Jest** | Testes unitários da lógica de timing e refinamento |
+| **Playwright** | Testes end-to-end (E2E) do fluxo no navegador |
+| **ESLint 9** | Linting com flat config moderna |
+| **GitHub Actions** | CI/CD automático (lint + testes a cada push) |
+
+> **Importante:** O Node.js é usado **apenas** para desenvolvimento (testes e linting). A aplicação em produção continua sendo 100% Vanilla JS estático, sem necessidade de `npm` ou build step.
 
 ---
 
@@ -35,12 +47,24 @@ SubTranslate/
 ├── js/
 │   ├── app.js                       → Orquestrador do pipeline
 │   ├── audio-extractor.js           → Extração de áudio (Web Audio API)
+│   ├── config.js                    → Gerenciamento de configurações e API Keys
 │   ├── transcriber.js               → Interface com o Web Worker
 │   ├── transcription-worker.js      → Whisper AI em thread separada
-│   ├── translator.js                → Tradução contextual (Google Translate)
+│   ├── translator.js                → Tradução multi-engine (ChatGPT, DeepL, Google)
 │   ├── timing-refiner.js            → Refinamento de sincronização
 │   ├── subtitle-generator.js        → Geração de SRT e VTT
 │   └── video-burner.js              → Gravação de legendas no vídeo (WebCodecs + mp4-muxer)
+├── tests/
+│   ├── unit/                        → Testes unitários (Jest)
+│   └── e2e/                         → Testes end-to-end (Playwright)
+├── .github/
+│   └── workflows/ci.yml            → Pipeline CI/CD (GitHub Actions)
+├── eslint.config.js                 → Configuração do ESLint 9 (flat config)
+├── jest.config.js                   → Configuração do Jest (ES Modules)
+├── package.json                     → Scripts de desenvolvimento
+├── ARCHITECTURE.md                  → Este documento
+├── CONTRIBUTING.md                  → Guia de contribuição
+├── LICENSE                          → Licença MIT
 ├── .gitignore
 └── README.md
 ```
@@ -60,7 +84,7 @@ O fluxo de processamento segue 7 etapas sequenciais, orquestradas pelo `app.js`:
                                                                 ▼
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
 │  7. Burn-in  │◀──│ 6. Legendas │◀──│ 5. Tradução │◀──│  4b. Timing │
-│  (opcional)  │    │  (SRT/VTT)  │    │  (Google)   │    │ (refiner)   │
+│  (opcional)  │    │  (SRT/VTT)  │    │(Multi-Eng.) │    │ (refiner)   │
 └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
 ```
 
@@ -105,7 +129,26 @@ O fluxo de processamento segue 7 etapas sequenciais, orquestradas pelo `app.js`:
 
 ---
 
-### 4.2. `audio-extractor.js` — Extração de Áudio
+### 4.2. `config.js` — Gerenciamento de Configurações
+
+**Responsabilidade**: Armazena e gerencia API Keys e preferências do usuário via `localStorage`.
+
+**Configurações gerenciadas**:
+```javascript
+{
+    openaiApiKey: null,        // Chave da API OpenAI (ChatGPT)
+    deeplApiKey: null,         // Chave da API DeepL
+    preferredEngine: 'chatgpt', // Engine preferido: 'chatgpt', 'deepl', 'google'
+    cacheTranslations: true,   // Cache de traduções em memória
+    webgpuEnabled: true        // Usa WebGPU quando disponível
+}
+```
+
+**Segurança**: As chaves são armazenadas no `localStorage` do navegador do usuário. Nunca são transmitidas para servidores do SubTranslate. A única comunicação externa é diretamente com as APIs oficiais (OpenAI, DeepL, Google).
+
+---
+
+### 4.3. `audio-extractor.js` — Extração de Áudio
 
 **Tecnologia**: Web Audio API (`AudioContext`)
 
@@ -121,7 +164,7 @@ O fluxo de processamento segue 7 etapas sequenciais, orquestradas pelo `app.js`:
 
 ---
 
-### 4.3. `transcription-worker.js` — Web Worker do Whisper
+### 4.4. `transcription-worker.js` — Web Worker do Whisper
 
 **Tecnologia**: Transformers.js (`@xenova/transformers@2.17.2`)
 
@@ -129,10 +172,10 @@ O fluxo de processamento segue 7 etapas sequenciais, orquestradas pelo `app.js`:
 
 **Modelos disponíveis**:
 | Modelo | Tamanho | Velocidade | Qualidade |
-|--------|---------|-----------|-----------|
+|--------|---------|-----------| ----------|
 | Tiny | ~75 MB | Mais rápido | Básica |
 | Base | ~150 MB | Equilibrado | Boa |
-| Small | ~500 MB | Mais lento | Alta |
+| Small | ~500 MB | Mais lento | Alta (Recomendado) |
 
 **Configuração do Whisper**:
 ```javascript
@@ -142,12 +185,22 @@ transcriber(audio, {
     chunk_length_s: 15,       // Processa 15 segundos por vez
     stride_length_s: 3,       // 3 segundos de sobreposição entre chunks
     return_timestamps: true,  // Retorna timestamps por chunk
+    temperature: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0], // Fallback progressivo
+    no_speech_threshold: 0.6, // Limiar para detectar silêncio
+    condition_on_previous_text: false, // Evita loops de alucinação
 });
 ```
 
 - **`chunk_length_s: 15`**: Chunks menores produzem timestamps mais granulares (melhor sincronização)
 - **`stride_length_s: 3`**: Sobreposição entre chunks evita cortes no meio de palavras
 - **`return_timestamps: true`**: Retorna `[start, end]` para cada chunk de texto
+- **`condition_on_previous_text: false`**: Evita que erros de transcrição se propaguem entre chunks
+
+**Fallback de Modelo (Graceful Degradation)**:
+```
+WebGPU → WASM → Whisper Tiny (WASM)
+```
+Se o modelo principal falhar (ex: falta de VRAM), o sistema tenta automaticamente um backend/modelo mais leve.
 
 **Comunicação Worker ↔ Main thread**:
 ```
@@ -160,7 +213,7 @@ Worker → Main:  { type: 'transcription-done', payload: result }
 
 ---
 
-### 4.4. `transcriber.js` — Interface com o Worker
+### 4.5. `transcriber.js` — Interface com o Worker
 
 **Responsabilidade**: Ponte entre `app.js` e o Worker. Converte chunks do Transformers.js em segmentos de legenda.
 
@@ -172,7 +225,7 @@ Worker → Main:  { type: 'transcription-done', payload: result }
 
 ---
 
-### 4.5. `timing-refiner.js` — Refinamento de Sincronização
+### 4.6. `timing-refiner.js` — Refinamento de Sincronização
 
 **Pipeline de 6 passes** (aplicados em sequência):
 
@@ -199,6 +252,8 @@ Worker → Main:  { type: 'transcription-done', payload: result }
 
 #### Pass 6: `trimSilence`
 - Remove segmentos com texto vazio ou duração < 0.3s
+- Remove tags de ruído/música (`[Música]`, `♪`, `(Música)`)
+- Resolve repetições de frases dentro do mesmo segmento
 
 **Constantes de timing**:
 ```javascript
@@ -213,44 +268,34 @@ START_MARGIN = 0.03   // Margem antes da primeira palavra
 
 ---
 
-### 4.6. `translator.js` — Tradução Contextual
+### 4.7. `translator.js` — Tradução Multi-Engine
 
-**Tecnologia**: Google Translate API (gratuita, endpoint `gtx`)
+**Arquitetura**: Sistema de tradução com fallback automático entre três motores.
 
-**Arquitetura de tradução em blocos**:
+**Engines suportados**:
 
-1. **Janelas de Contexto**: Agrupa segmentos em blocos de até 4.500 caracteres
-2. **Marcadores Unicode**: Cada segmento é prefixado com `⟦N⟧` (ex: `⟦1⟧ Hello world`)
-3. **Tradução em bloco**: O bloco inteiro é enviado de uma vez ao Google Translate, preservando contexto entre frases
-4. **Parsing de marcadores**: Após tradução, os marcadores são usados para separar cada segmento traduzido
+| Engine | API | Requer Chave | Qualidade |
+|--------|-----|:------------:|-----------|
+| **ChatGPT** | OpenAI `gpt-4o-mini` | ✅ | Excelente (contextual) |
+| **DeepL** | DeepL API Free/Pro | ✅ | Muito boa (idiomas europeus) |
+| **Google** | `translate.googleapis.com` | ❌ | Boa (gratuita) |
 
-**Fallback em 4 níveis**:
+**Ordem de Fallback**:
 ```
-1. parseByMarkers → Parseia marcadores Unicode ⟦N⟧
-       ↓ falha
-2. fillMissing → Completa segmentos faltantes individualmente
-       ↓ falha
-3. parseByLines → Tenta dividir por quebras de linha
-       ↓ falha
-4. Individual → Traduz cada segmento separadamente
+Engine Preferido → ChatGPT → DeepL → Google Translate
 ```
 
-**Preservação de marcas/nomes**:
-- Detecta PascalCase (`iPhone`, `YouTube`), ALLCAPS (`NASA`, `GPU`), e nomes próprios
-- Compara texto traduzido com original e restaura nomes que foram traduzidos incorretamente
-- Filtra palavras comuns em inglês que começam com maiúscula (`The`, `This`, `What`)
+**Resiliência (Google Translate)**:
+- Retry automático com backoff exponencial: 2s → 4s → 8s
+- Tolerância a erros de rede e Rate Limiting (HTTP 429)
 
-**Pós-processamento**:
-1. Remove marcadores Unicode residuais
-2. Restaura nomes de marcas
-3. Limpa espaços duplicados
-4. Capitaliza primeira letra de cada segmento
+**Cache em memória**: Traduções idênticas são cacheadas via `Map`, evitando requests redundantes para textos repetidos.
 
-**Rate limiting**: 350ms entre requisições para evitar bloqueio (HTTP 429)
+**Rate Limiting**: 200ms entre requisições para evitar bloqueio.
 
 ---
 
-### 4.7. `subtitle-generator.js` — Geração de Legendas
+### 4.8. `subtitle-generator.js` — Geração de Legendas
 
 **Formatos gerados**:
 
@@ -274,7 +319,7 @@ Texto da legenda aqui
 
 ---
 
-### 4.8. `video-burner.js` — Gravação de Legendas no Vídeo
+### 4.9. `video-burner.js` — Gravação de Legendas no Vídeo
 
 **Tecnologias**: WebCodecs API (`VideoEncoder`, `AudioEncoder`) + mp4-muxer v5.2.2
 
@@ -295,68 +340,7 @@ Texto da legenda aqui
 └───────────────┘     └──────────────┘     └──────────────┘  └──────────┘
 ```
 
-#### Etapa 1: Extração de Áudio
-```javascript
-const response = await fetch(videoURL);
-const arrayBuffer = await response.arrayBuffer();
-const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-```
-- Extrai áudio completo como Float32 PCM via AudioContext
-- Suporta qualquer formato que o navegador decodifique
-
-#### Etapa 2: Codificação de Áudio
-```javascript
-const audioData = new AudioData({
-    format: 'f32-planar',
-    sampleRate,
-    numberOfFrames: frameCount,
-    numberOfChannels,
-    timestamp,
-    data: planarData,
-});
-audioEncoder.encode(audioData);
-```
-- Converte AudioBuffer em chunks de 1 segundo
-- Formato planar: `[canal0_amostras][canal1_amostras]`
-- Codec: AAC-LC (`mp4a.40.2`) a 128 kbps
-
-#### Etapa 3: Captura de Frames
-**Método rápido** (`requestVideoFrameCallback`):
-```javascript
-video.playbackRate = 2;  // 2x velocidade
-video.requestVideoFrameCallback(function processFrame(now, metadata) {
-    ctx.drawImage(video, 0, 0, W, H);
-    drawSubtitle(ctx, subtitle, W, H);
-    const frame = new VideoFrame(canvas, { timestamp });
-    encoder.encode(frame, { keyFrame });
-    frame.close();
-    video.requestVideoFrameCallback(processFrame);
-});
-video.play();
-```
-- Captura sequencial é **3-5x mais rápida** que seeking random-access
-- A cada frame, desenha o frame original + legenda no Canvas
-- Cria `VideoFrame` do Canvas e codifica
-
-**Método fallback** (seeking):
-- Para navegadores sem `requestVideoFrameCallback`
-- `video.currentTime = t; await seeked;` para cada frame
-
-#### Etapa 4: Renderização de Legendas
-```javascript
-ctx.font = '700 86px Inter, Arial, sans-serif';
-ctx.strokeStyle = '#000000';
-ctx.lineWidth = 5;
-ctx.strokeText(text, x, y);  // Contorno preto
-ctx.fillStyle = '#FFFFFF';
-ctx.fillText(text, x, y);    // Texto branco
-```
-- Texto branco com contorno preto grosso (5px) — sem fundo
-- Tamanho: 4.5% da altura do vídeo (20–52px)
-- Word wrap automático a 88% da largura
-- Posição: 6% acima da borda inferior
-
-#### Etapa 5: Seleção de Codec H.264
+#### Codec H.264 — Seleção Automática de Nível
 ```javascript
 function getCodecString(w, h) {
     const mbs = Math.ceil(w / 16) * Math.ceil(h / 16);
@@ -366,11 +350,14 @@ function getCodecString(w, h) {
     return 'avc1.4d0033';                     // Main 5.1
 }
 ```
-- Calcula nível H.264 correto baseado em macroblocks (16×16 px)
-- Profile Main para boa compressão com compatibilidade
-- `VideoEncoder.isConfigSupported()` valida antes de configurar
 
-#### Etapa 6: Muxing Final
+#### Renderização de Legendas
+- Texto branco com contorno preto grosso (5px) — sem fundo
+- Tamanho: 4.5% da altura do vídeo (20–52px)
+- Word wrap automático a 88% da largura
+- Posição: 6% acima da borda inferior
+
+#### Muxing Final
 ```javascript
 const muxer = new Muxer({
     target: new ArrayBufferTarget(),
@@ -385,7 +372,7 @@ const muxer = new Muxer({
 
 ---
 
-### 4.9. `styles.css` — Design System
+### 4.10. `styles.css` — Design System
 
 **Sistema de Temas** via CSS Custom Properties:
 ```css
@@ -424,7 +411,7 @@ const muxer = new Muxer({
 | `VideoFrame` | Frames de vídeo para codificação | Chrome 94+ |
 | `AudioData` | Dados de áudio para codificação | Chrome 94+ |
 | `requestVideoFrameCallback` | Captura sincronizada de frames | Chrome 83+ |
-| `localStorage` | Persistência de preferência de tema | Todos os browsers |
+| `localStorage` | Persistência de preferências e API Keys | Todos os browsers |
 | `matchMedia` | Detecção de preferência do sistema | Todos os browsers |
 
 ---
@@ -437,7 +424,7 @@ const muxer = new Muxer({
 | `mp4-muxer@5.2.2` | jsdelivr | Empacotamento de streams em MP4 |
 | `Inter` (Google Fonts) | fonts.googleapis.com | Tipografia da interface |
 
-> **Nenhuma dependência local.** Todo o projeto é estático, sem `node_modules`, sem build step.
+> **Nota:** Dependências de **desenvolvimento** (`jest`, `playwright`, `eslint`) são instaladas via `npm install` e listadas no `package.json`. Elas **não** afetam o código de produção.
 
 ---
 
@@ -455,13 +442,13 @@ O burn-in de legendas requer WebCodecs (Chrome/Edge only). As demais funcionalid
 ## 8. Fluxo Completo do Usuário
 
 1. **Upload**: Usuário arrasta ou seleciona um arquivo de vídeo
-2. **Configuração**: Escolhe modelo Whisper, idioma de origem e destino
+2. **Configuração**: Escolhe modelo Whisper, idioma de origem e destino, e opcionalmente configura API Keys
 3. **Processamento**:
    - Modelo Whisper é baixado (cache no IndexedDB)
    - Áudio é extraído e reamostrado para 16kHz mono
    - Whisper transcreve em chunks de 15 segundos
    - Timing é refinado (6 passes de otimização)
-   - Texto é traduzido via Google Translate (em blocos com contexto)
+   - Texto é traduzido via engine preferido (com fallback automático)
    - Arquivos SRT e VTT são gerados
 4. **Resultado**:
    - Preview do vídeo com legendas sincronizadas (via `<track>`)
@@ -473,8 +460,9 @@ O burn-in de legendas requer WebCodecs (Chrome/Edge only). As demais funcionalid
 ## 9. Considerações de Segurança e Privacidade
 
 - **Zero servidor**: Nenhum dado é enviado para backend próprio
-- **Tradução**: A única comunicação externa é com `translate.googleapis.com` (API pública do Google Translate)
+- **API Keys locais**: Chaves de API são armazenadas exclusivamente no `localStorage` do navegador
+- **Tradução**: Comunicação externa ocorre apenas com as APIs oficiais dos engines configurados
 - **Modelo Whisper**: Baixado uma vez e cacheado localmente no IndexedDB
-- **Processamento local**: Toda transcrição, refinamento, e gravação acontecem no CPU/GPU do usuário
+- **Processamento local**: Toda transcrição, refinamento e gravação acontecem no CPU/GPU do usuário
 - **Blob URLs**: Vídeos e arquivos gerados existem apenas na memória do navegador
 - **Limpeza de memória**: `URL.revokeObjectURL()` é chamado ao resetar a aplicação

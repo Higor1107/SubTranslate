@@ -1,0 +1,29 @@
+{
+  "name": "subtranslate",
+  "version": "3.0.0",
+  "description": "Tradução e Legendagem de Vídeos 100% Local com IA",
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:e2e": "playwright test",
+    "lint": "eslint js/ --ext .js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Higor1107/SubTranslate.git"
+  },
+  "author": "Higor",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Higor1107/SubTranslate/issues"
+  },
+  "homepage": "https://github.com/Higor1107/SubTranslate#readme",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.60.0",
+    "eslint": "^10.4.0",
+    "globals": "^17.6.0",
+    "jest": "^30.4.2",
+    "jest-environment-jsdom": "^30.4.1"
+  }
+}

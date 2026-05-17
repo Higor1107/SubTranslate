@@ -13,6 +13,15 @@ class MultiEngineTranslator {
         this.cache = new Map(); // Cache em memória para evitar requests redundantes
     }
 
+    /**
+     * Traduz uma lista de segmentos de legenda, reportando o progresso.
+     * 
+     * @param {Array<{start: number, end: number, text: string, index: number}>} segments - Segmentos a traduzir.
+     * @param {string} sourceLang - Idioma de origem (ex: 'en').
+     * @param {string} targetLang - Idioma de destino (ex: 'pt-BR').
+     * @param {Function} [onProgress] - Callback para reportar progresso { percent, label }.
+     * @returns {Promise<Array<{start: number, end: number, text: string, index: number}>>}
+     */
     async translateSegments(segments, sourceLang, targetLang, onProgress) {
         if (!segments.length) return [];
         
@@ -46,6 +55,15 @@ class MultiEngineTranslator {
         return result;
     }
 
+    /**
+     * Tenta traduzir um texto utilizando os engines disponíveis (Fallback: ChatGPT -> DeepL -> Google).
+     * 
+     * @param {string} text - Texto original.
+     * @param {string} sourceLang - Código do idioma de origem.
+     * @param {string} targetLang - Código do idioma de destino.
+     * @returns {Promise<string>} Texto traduzido.
+     * @throws {Error} Se todos os engines falharem.
+     */
     async translate(text, sourceLang, targetLang) {
         if (!text || text.trim() === '') return text;
         
@@ -150,12 +168,27 @@ class MultiEngineTranslator {
 
     async translateWithGoogle(text, sourceLang, targetLang) {
         const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceLang}&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('Google Translate request failed');
-        const data = await response.json();
+        const maxRetries = 3;
         
-        if (!data || !data[0]) throw new Error('Google Translate invalid response');
-        return data[0].map(item => item[0]).join('').trim();
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    if (response.status === 429) {
+                        throw new Error('Rate limit exceeded');
+                    }
+                    throw new Error(`Google Translate request failed with status ${response.status}`);
+                }
+                const data = await response.json();
+                if (!data || !data[0]) throw new Error('Google Translate invalid response');
+                return data[0].map(item => item[0]).join('').trim();
+            } catch (err) {
+                if (attempt === maxRetries) throw err;
+                const delayMs = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+                console.warn(`[Translator] Google Translate falhou (Tentativa ${attempt}/${maxRetries}). Tentando novamente em ${delayMs}ms...`);
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+        }
     }
 
     mapToDeepLLang(lang) {

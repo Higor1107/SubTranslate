@@ -110,13 +110,14 @@ export class CohereTranscriber {
             if (!text) continue;
 
             const ts = chunk.timestamp;
-            let start = 0, end = 0;
+            let start;
+            let end;
 
             if (ts && Array.isArray(ts)) {
-                start = (ts[0] != null) ? Number(ts[0]) : 0;
-                end = (ts[1] != null) ? Number(ts[1]) : null;
+                start = (ts[0] !== null) ? Number(ts[0]) : 0;
+                end = (ts[1] !== null) ? Number(ts[1]) : null;
 
-                if (end == null || isNaN(end) || end <= start) {
+                if (end === null || isNaN(end) || end <= start) {
                     end = start + Math.max(text.length / CHARS_PER_SEC, MIN_DURATION);
                     end = Math.min(end, audioDuration);
                 }
@@ -149,7 +150,7 @@ export class CohereTranscriber {
     }
 
     splitSentence(text, maxChars) {
-        let parts = text.split(/(?<=[.!?])\s+/).filter(Boolean);
+        const parts = text.split(/(?<=[.!?])\s+/).filter(Boolean);
         const result = [];
         for (const part of parts) {
             if (part.length > maxChars) {
