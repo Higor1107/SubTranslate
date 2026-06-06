@@ -1,10 +1,11 @@
 /**
  * SubTranslate Web — Aplicação principal.
+ * /* eslint-disable no-console */
  * Stack 2026: Orquestração WebGPU + MultiEngine + FFmpeg.wasm
  */
 
 import { extractAudio } from './audio-extractor.js';
-import { CohereTranscriber, getAvailableModels } from './transcriber.js';
+import { CohereTranscriber } from './transcriber.js';
 import { MultiEngineTranslator } from './translator.js';
 import { generateSRT, generateVTT, createBlobURL, downloadFile } from './subtitle-generator.js';
 import { ConfigManager } from './config.js';

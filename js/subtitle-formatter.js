@@ -75,7 +75,7 @@ export function formatSubtitles(chunks) {
             currentLines.push(currentLine.trim());
         }
         if (currentLines.length > 0 && currentStart !== null && lastEnd !== null) {
-            let start = currentStart;
+            const start = currentStart;
             let end = lastEnd;
             
             // Força duração mínima (evita flash rápido na tela)

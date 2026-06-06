@@ -1,5 +1,6 @@
 /**
  * Web Worker para transcrição com Whisper via Transformers.js.
+ * /* eslint-disable no-console */
  * Atualizado para Stack 2026: Suporte a WebGPU para inferência hiper-rápida.
  */
 import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.1.0';
@@ -94,7 +95,7 @@ self.onmessage = async (e) => {
             
             const total_chunks = Math.ceil(payload.audio.length / step_samples);
             
-            let all_chunks = [];
+            const all_chunks = [];
             let full_text = "";
             
             for (let i = 0; i < total_chunks; i++) {
@@ -116,8 +117,8 @@ self.onmessage = async (e) => {
                 // Mapeia os chunks corrigindo o timestamp global e aplicando o Stride Stitching
                 if (result.chunks && result.chunks.length > 0) {
                     for (const c of result.chunks) {
-                        let t0 = c.timestamp[0];
-                        let t1 = c.timestamp[1];
+                        const t0 = c.timestamp[0];
+                        const t1 = c.timestamp[1];
 
                         // Stride Stitching: Se a palavra começa na área de sobreposição (> 28s), 
                         // nós a descartamos aqui, pois o próximo chunk vai pegá-la no segundo 0 perfeitamente!

@@ -1,5 +1,6 @@
 /**
  * Transcriber — Interface com o Web Worker de transcrição.
+ * /* eslint-disable no-console */
  * Atualizado para Stack 2026: Pipeline WebGPU integrado e formatador Netflix.
  */
 
@@ -68,8 +69,6 @@ export class CohereTranscriber {
             const durationSecs = audioData.length / 16000;
             console.log(`[CohereTranscriber] Áudio: ${audioData.length} amostras (${durationSecs.toFixed(1)}s)`);
 
-            let chunkCounter = 0;
-            let currentProgress = 0;
 
             const handler = (e) => {
                 const { type, payload } = e.data;

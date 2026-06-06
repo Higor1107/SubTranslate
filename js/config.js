@@ -9,7 +9,7 @@ class ConfigManager {
         if (saved) {
             try {
                 return JSON.parse(saved);
-            } catch (e) {
+            } catch (_e) {
                 return this.getDefaults();
             }
         }
