@@ -16,8 +16,7 @@ export class CohereTranscriber {
 
     abort() {
         if (worker) {
-            worker.terminate();
-            worker = null;
+            worker.postMessage({ type: 'abort' });
         }
         if (currentReject) {
             currentReject(new Error('Processamento abortado.'));

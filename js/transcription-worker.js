@@ -16,9 +16,15 @@ if (!env.backends.onnx.webgpu) {
 env.backends.onnx.webgpu.powerPreference = 'high-performance';
 
 let transcriber = null;
+let isCancelled = false;
 
 self.onmessage = async (e) => {
     const { type, payload } = e.data;
+
+    if (type === 'abort') {
+        isCancelled = true;
+        return;
+    }
 
     if (type === 'load') {
         try {
@@ -79,6 +85,7 @@ self.onmessage = async (e) => {
     }
 
     if (type === 'transcribe') {
+        isCancelled = false;
         if (!transcriber) {
             self.postMessage({ type: 'error', payload: 'Modelo não carregado.' });
             return;
@@ -99,6 +106,11 @@ self.onmessage = async (e) => {
             let full_text = "";
             
             for (let i = 0; i < total_chunks; i++) {
+                if (isCancelled) {
+                    self.postMessage({ type: 'log', payload: '[Worker] Loop de transcrição abortado graciosamente.' });
+                    return; // Sai silenciosamente, a Promise já foi rejeitada no app.js
+                }
+
                 const start_sample = i * step_samples;
                 const end_sample = Math.min(start_sample + chunk_samples, payload.audio.length);
                 const chunk_audio = payload.audio.slice(start_sample, end_sample);
