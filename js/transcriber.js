@@ -13,6 +13,14 @@ export class CohereTranscriber {
         this.device = 'unknown';
     }
 
+    abort() {
+        if (this.worker) {
+            this.worker.terminate();
+            this.worker = null;
+            this.initialized = false;
+        }
+    }
+
     async loadModel(modelSize = 'base', onProgress) {
         // Usa os novos modelos otimizados da comunidade para WebGPU v3
         const MODEL_MAP = {

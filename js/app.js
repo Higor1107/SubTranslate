@@ -24,6 +24,8 @@ const state = {
     processing: false,
 };
 
+let isCancelled = false;
+
 // ─── DOM ────────────────────────────────────────────────────────
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
@@ -44,6 +46,7 @@ const dom = {
     targetLang: $('#target-lang'),
     engineSelect: $('#translation-engine'),
     btnProcess: $('#btn-process'),
+    btnCancel: $('#btn-cancel'),
     progressBar: $('#processing-bar'),
     progressLabel: $('#progress-label'),
     progressPercent: $('#progress-percent'),
@@ -139,6 +142,13 @@ function selectFile(file) {
 
 function setupSettings() {
     dom.btnProcess.addEventListener('click', startPipeline);
+    dom.btnCancel.addEventListener('click', cancelPipeline);
+}
+
+function cancelPipeline() {
+    if (!state.processing) return;
+    isCancelled = true;
+    transcriber.abort();
 }
 
 // ─── Pipeline ───────────────────────────────────────────────────
@@ -159,6 +169,7 @@ function stepProgress(step, fraction) {
 async function startPipeline() {
     if (state.processing || !state.videoFile) return;
     state.processing = true;
+    isCancelled = false;
 
     dom.btnProcess.disabled = true;
     dom.settingsSection.style.display = 'none';
@@ -172,6 +183,17 @@ async function startPipeline() {
     const targetLang = dom.targetLang.value;
     const engine = dom.engineSelect ? dom.engineSelect.value : configManager.config.preferredEngine;
     configManager.setPreferredEngine(engine);
+
+    const sourceText = dom.sourceLang.options[dom.sourceLang.selectedIndex].text;
+    const targetText = dom.targetLang.options[dom.targetLang.selectedIndex].text;
+
+    document.getElementById('step-translate-desc').textContent = `De ${sourceText} para ${targetText}`;
+    document.getElementById('tab-translated').textContent = `Traduzido (${targetText})`;
+    document.getElementById('tab-original').textContent = `Original (${sourceText})`;
+    document.getElementById('dl-lang-trans-srt').textContent = `Traduzido (${targetText})`;
+    document.getElementById('dl-lang-trans-vtt').textContent = `Traduzido (${targetText})`;
+    document.getElementById('dl-lang-orig-srt').textContent = `Original (${sourceText})`;
+    document.getElementById('dl-lang-orig-vtt').textContent = `Original (${sourceText})`;
 
     // Initialize Translator
     translator = new MultiEngineTranslator(
@@ -212,6 +234,8 @@ async function startPipeline() {
         updateStep('step-model', 'done');
         console.timeEnd('[Pipeline] 1. Carregamento do Modelo');
 
+        if (isCancelled) throw new Error('Processamento cancelado pelo usuário.');
+
         // ── Step 2: Extrair áudio ──
         updateStep('step-extract', 'active');
         updateProgress('Extraindo áudio...', stepProgress('extract', 0));
@@ -222,6 +246,8 @@ async function startPipeline() {
         });
         updateStep('step-extract', 'done');
         console.timeEnd('[Pipeline] 2. Extração de Áudio');
+
+        if (isCancelled) throw new Error('Processamento cancelado pelo usuário.');
 
         // ── Step 3: Transcrever ──
         updateStep('step-transcribe', 'active');
@@ -241,6 +267,8 @@ async function startPipeline() {
         updateStep('step-transcribe', 'done');
         console.timeEnd('[Pipeline] 3. Transcrição (Whisper)');
 
+        if (isCancelled) throw new Error('Processamento cancelado pelo usuário.');
+
         // ── Step 4: Refinar timing ──
         updateStep('step-timing', 'active');
         updateProgress('Refinando sincronização...', stepProgress('timing', 0));
@@ -252,6 +280,8 @@ async function startPipeline() {
         updateStep('step-timing', 'done');
         state.subtitles.original = rawSegments;
         console.timeEnd('[Pipeline] 4. Refinamento (Timing)');
+
+        if (isCancelled) throw new Error('Processamento cancelado pelo usuário.');
 
         // ── Step 5: Traduzir ──
         updateStep('step-translate', 'active');
@@ -268,6 +298,8 @@ async function startPipeline() {
         state.subtitles.translated = translatedSegments;
         updateStep('step-translate', 'done');
         console.timeEnd('[Pipeline] 5. Tradução Textual');
+
+        if (isCancelled) throw new Error('Processamento cancelado pelo usuário.');
 
         // ── Step 6: Gerar legendas ──
         updateStep('step-generate', 'active');
@@ -286,8 +318,8 @@ async function startPipeline() {
 
     } catch (err) {
         console.error('Pipeline error:', err);
-        updateProgress(`Erro: ${err.message}`, -1);
-        dom.progressBar.style.background = 'var(--error)';
+        updateProgress(isCancelled ? 'Cancelado.' : `Erro: ${err.message}`, -1);
+        dom.progressBar.style.background = isCancelled ? 'var(--text-muted)' : 'var(--error)';
 
         setTimeout(() => {
             state.processing = false;
@@ -297,7 +329,12 @@ async function startPipeline() {
             dom.uploadSection.style.display = 'block';
             dom.settingsSection.style.display = 'block';
             dom.progressBar.style.background = '';
-        }, 5000);
+            
+            // Re-instanciar o transcriber caso tenha sido abortado (destruído o worker)
+            if (isCancelled && !transcriber.initialized) {
+                transcriber.init();
+            }
+        }, 3000);
     }
 }
 

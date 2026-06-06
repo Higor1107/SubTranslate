@@ -275,7 +275,7 @@
                         </div>
                         <div class="step-info">
                             <span class="step-title">Tradução Contextual</span>
-                            <span class="step-desc">Google Translate com janelas de contexto</span>
+                            <span class="step-desc" id="step-translate-desc">Google Translate com janelas de contexto</span>
                         </div>
                         <div class="step-status"><span class="step-badge">Aguardando</span></div>
                     </div>
@@ -304,6 +304,9 @@
                     <div class="progress-bar-container large">
                         <div class="progress-bar animated" id="processing-bar"></div>
                     </div>
+                    <button class="btn btn-ghost" id="btn-cancel" style="margin-top: 1.5rem; width: 100%; color: #ef4444;">
+                        Cancelar Processamento
+                    </button>
                 </div>
             </div>
         </section>
@@ -357,7 +360,7 @@
                                 <polyline points="7 10 12 15 17 10" />
                                 <line x1="12" y1="15" x2="12" y2="3" />
                             </svg>
-                            <div><span class="dl-format">SRT</span><span class="dl-lang">Traduzido (PT)</span></div>
+                            <div><span class="dl-format">SRT</span><span class="dl-lang" id="dl-lang-trans-srt">Traduzido (PT)</span></div>
                         </button>
                         <button class="btn btn-download" id="btn-dl-vtt-translated">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -366,7 +369,7 @@
                                 <polyline points="7 10 12 15 17 10" />
                                 <line x1="12" y1="15" x2="12" y2="3" />
                             </svg>
-                            <div><span class="dl-format">VTT</span><span class="dl-lang">Traduzido (PT)</span></div>
+                            <div><span class="dl-format">VTT</span><span class="dl-lang" id="dl-lang-trans-vtt">Traduzido (PT)</span></div>
                         </button>
                         <button class="btn btn-download" id="btn-dl-srt-original">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -375,7 +378,7 @@
                                 <polyline points="7 10 12 15 17 10" />
                                 <line x1="12" y1="15" x2="12" y2="3" />
                             </svg>
-                            <div><span class="dl-format">SRT</span><span class="dl-lang">Original (EN)</span></div>
+                            <div><span class="dl-format">SRT</span><span class="dl-lang" id="dl-lang-orig-srt">Original (EN)</span></div>
                         </button>
                         <button class="btn btn-download" id="btn-dl-vtt-original">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -384,7 +387,7 @@
                                 <polyline points="7 10 12 15 17 10" />
                                 <line x1="12" y1="15" x2="12" y2="3" />
                             </svg>
-                            <div><span class="dl-format">VTT</span><span class="dl-lang">Original (EN)</span></div>
+                            <div><span class="dl-format">VTT</span><span class="dl-lang" id="dl-lang-orig-vtt">Original (EN)</span></div>
                         </button>
                     </div>
                 </div>
