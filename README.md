@@ -170,6 +170,6 @@ Este projeto está licenciado sob a [MIT License](LICENSE).
 
 <div align="center">
 
-Feito com 💜 por <a href="https://github.com/Higor1107">Higor</a>
+Feito por <a href="https://github.com/Higor1107">Higor</a>
 
 </div>
