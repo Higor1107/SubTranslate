@@ -1,175 +1,108 @@
 <div align="center">
 
-# 🌐 SubTranslate
+# SubTranslate
 
-### Tradução e Legendagem de Vídeos 100% Local com IA
-**Whisper AI + WebCodecs — Sem Servidor, Sem FFmpeg**
+**Tradução e Legendagem de Vídeos 100% Local com Inteligência Artificial**
 
 <br>
 
 <a href="https://higor1107.github.io/SubTranslate/">
-  <img src="https://img.shields.io/badge/▶️_ACESSAR_APLICAÇÃO_ONLINE-6366f1?style=for-the-badge&logo=googlechrome&logoColor=white" height="50">
+  <img src="https://img.shields.io/badge/Acessar_Aplicação_Web-000000?style=for-the-badge&logo=vercel&logoColor=white" height="40">
 </a>
 
 <br><br>
 
-[![GitHub Repo](https://img.shields.io/badge/GitHub-Repositório-181717?style=for-the-badge&logo=github)](https://github.com/Higor1107/SubTranslate)
-[![License: MIT](https://img.shields.io/badge/Licença-MIT-green?style=for-the-badge)](LICENSE)
+[![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github)](https://github.com/Higor1107/SubTranslate)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 [![Transformers.js](https://img.shields.io/badge/Transformers.js-FF6F00?style=for-the-badge&logo=huggingface&logoColor=white)](https://huggingface.co/docs/transformers.js)
-[![WebCodecs](https://img.shields.io/badge/WebCodecs-Native-0058A0?style=for-the-badge&logo=html5&logoColor=white)](https://developer.mozilla.org/en-US/docs/Web/API/WebCodecs_API)
 
 </div>
 
 ---
 
-## 🚀 Sobre o Projeto
+## Sobre
 
-O **SubTranslate Pro** é uma ferramenta open-source focada na criação profissional de legendas para vídeos, séries e filmes, executada inteiramente dentro do seu navegador.
+O **SubTranslate** é uma aplicação open-source de alto desempenho projetada para gerar e traduzir legendas de arquivos de vídeo e áudio. Toda a inferência de IA e o processamento de áudio são executados localmente no navegador, utilizando a aceleração de hardware do dispositivo (WebGPU), o que garante privacidade total e custos zero de processamento em nuvem.
 
-A arquitetura utiliza o motor **WebGPU V3** nativo do navegador para rodar IA pesada com aceleração de hardware (GPU) ativa de fábrica, garantindo um processo off-line e sem custos com servidores.
+### Principais Recursos
 
-### ✨ Destaques da Edição Pro (Cinema)
-
-| Feature | Descrição |
-|---------|-----------|
-| 🧠 **IA Local WebGPU V3** | Usa o `Transformers.js` (Pipeline V3) para rodar o Whisper (OpenAI) diretamente na sua placa de vídeo via WebGPU. |
-| 🎬 **Formatação Netflix** | Formata os tempos e caracteres no padrão da indústria: no máximo 42 caracteres por linha, com durações mínimas absolutas. |
-| ✂️ **Filtro de Ruído Inteligente** | Filtra e remove agressivamente "Closed Captions" indesejados da IA, como `[risos]`, `(música)`, etc., deixando apenas a fala limpa. |
-| 🪡 **Stride Stitching** | Fatiamento inteligente de áudio com sobreposição de 2 segundos que impede palavras de serem cortadas ao meio, mantendo a sincronia perfeita do modelo *Base*. |
-| 📝 **Tradução Contextual por Lotes** | Agrupa até 15 legendas numa única janela de contexto antes de enviar para a API, para que o ChatGPT ou DeepL entendam a cena, os pronomes e o ritmo (15x mais rápido). |
-| 🛡️ **Privacidade** | Seu arquivo de vídeo/áudio **nunca sai** do seu computador. Apenas o texto (legenda) viaja para tradução. |
-| 📥 **Exportação Padrão** | Exporte os arquivos brutos em `.srt` ou `.vtt` com um clique. |
+- **Inferência Local via WebGPU:** Utiliza a versão V3 do `Transformers.js` para executar modelos da família Whisper diretamente na placa de vídeo do usuário, resultando em velocidades de transcrição de ponta a ponta sem tráfego de rede.
+- **Sincronização Absoluta:** O motor de extração de áudio aplica um algoritmo de fatiamento sequencial inteligente (*Stride Stitching*) que preserva a continuidade das ondas sonoras e evita a quebra temporal em frases divididas entre blocos.
+- **Formatação de Indústria:** As legendas são geradas obedecendo a padrões rigorosos de legibilidade (máximo de 42 caracteres por linha, máximo de 2 linhas por bloco e regras de tempo mínimo na tela).
+- **Tradução Contextual:** Integração nativa com APIs do OpenAI (ChatGPT) e DeepL, realizando traduções em lotes semânticos (blocos contextuais) para preservar concordância, gênero e fluxo narrativo.
+- **Exportação Universal:** Geração limpa e estruturada de arquivos `.srt` e `.vtt` com tempos exatos.
 
 ---
 
-## ⚙️ Arquitetura Tecnológica
+## Motores de Tradução
 
-| Camada | Tecnologia | Função |
-|--------|-----------|--------|
-| **Transcrição** | [Transformers.js](https://huggingface.co/docs/transformers.js) (Whisper) | Speech-to-text gerando tempos exatos das falas |
-| **Pipeline Core** | Web Workers | Inferência off-thread para manter a interface fluida |
-| **Tradução Contextual** | ChatGPT / DeepL / Google Translate | Tradução em bloco/lote (15 frases) para preservar coesão |
-| **Exportação** | JS Blob API | Gera e encapsula legendas limpas e perfeitamente ritmadas em arquivos `.srt`/`.vtt` |
-| **Interface** | Vanilla JS / CSS Moderno | Tema Escuro (Cinema), minimalista, limpo e direto ao ponto |
+O SubTranslate utiliza o Google Translate por padrão (sem necessidade de chaves adicionais), mas oferece integração nativa com os principais motores neurais do mercado para traduções de nível estúdio.
 
-> 📖 **Para desenvolvedores:** Veja o [ARCHITECTURE.md](ARCHITECTURE.md) para documentação técnica detalhada de cada módulo.
+### Configuração: OpenAI (ChatGPT)
 
----
+Recomendado para traduções em que o contexto narrativo completo da cena é mandatório.
 
-## 🔌 Motores de Tradução (API Keys)
+1. Acesse o portal da [OpenAI API](https://platform.openai.com/api-keys) e gere uma chave secreta.
+2. Na aplicação SubTranslate, navegue até a engrenagem de **Configurações**.
+3. Insira sua chave no campo designado e selecione o modelo ChatGPT como seu motor preferido.
+*A API utilizará o modelo `gpt-4o-mini` para aliar velocidade máxima e baixo custo.*
 
-O SubTranslate suporta **três motores de tradução** com fallback automático. Ao abrir a aplicação, você pode configurar as API Keys diretamente na interface (seção de Configurações).
+### Configuração: DeepL
 
-### Google Translate (Padrão — Sem API Key)
+Recomendado para altíssima precisão gramatical em idiomas de matriz europeia.
 
-O Google Translate funciona **sem necessidade de API Key**. Ele utiliza o endpoint público `translate.googleapis.com`, que é gratuito e funciona imediatamente. Este é o engine padrão quando nenhuma chave é configurada.
-
-### ChatGPT (OpenAI) — Recomendado para Qualidade
-
-Para usar o ChatGPT como motor de tradução (maior qualidade e contexto):
-
-1. Acesse [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
-2. Crie uma nova API Key
-3. Na interface do SubTranslate, clique no ícone ⚙️ **Configurações**
-4. Cole sua chave no campo **"OpenAI API Key"**
-5. Selecione **"ChatGPT"** como engine preferido
-
-> **Modelo utilizado:** `gpt-4o-mini` — rápido, barato e com excelente qualidade de tradução contextual.
-> **Custo estimado:** ~$0.01 por vídeo de 5 minutos.
-
-### DeepL — Alta Precisão para Idiomas Europeus
-
-Para usar o DeepL como motor:
-
-1. Acesse [deepl.com/pro-api](https://www.deepl.com/pro-api) e crie uma conta **DeepL API Free**
-2. Copie sua **Authentication Key** no painel do DeepL
-3. Na interface do SubTranslate, cole a chave no campo **"DeepL API Key"**
-4. Selecione **"DeepL"** como engine preferido
-
-> **Plano Free:** 500.000 caracteres/mês gratuitamente.
-> O DeepL é especialmente forte para traduções EN↔DE, EN↔FR, EN↔ES.
-
-### Ordem de Fallback
-
-Se o engine preferido falhar, o sistema tenta automaticamente o próximo:
-
-```
-Engine Preferido → ChatGPT → DeepL → Google Translate
-```
-
-As chaves são salvas localmente no `localStorage` do seu navegador e **nunca são enviadas para nossos servidores**.
+1. Crie uma conta no portal [DeepL API Free](https://www.deepl.com/pro-api) e copie sua *Authentication Key*.
+2. Na aplicação SubTranslate, navegue até a engrenagem de **Configurações**.
+3. Insira sua chave e selecione DeepL como motor.
+*O plano gratuito do DeepL permite a tradução de até 500.000 caracteres mensais.*
 
 ---
 
-## 🛠️ Como Usar
+## Como Utilizar
 
-### Versão Online (Mais Fácil)
+### Ambiente de Produção
 
-Acesse diretamente: **[higor1107.github.io/SubTranslate](https://higor1107.github.io/SubTranslate/)**
+A aplicação é uma PWA (Progressive Web App) totalmente embutida e hospedada diretamente via GitHub Pages. Não é necessária a instalação de softwares de terceiros.
+Acesse: [higor1107.github.io/SubTranslate](https://higor1107.github.io/SubTranslate/)
 
-### Versão Local (Para Desenvolvimento)
+### Desenvolvimento Local
+
+Para clonar e rodar o projeto localmente:
 
 ```bash
 # Clone o repositório
 git clone https://github.com/Higor1107/SubTranslate.git
 cd SubTranslate
 
-# Instale as dependências de desenvolvimento
+# Instale as dependências (Testes e Linter)
 npm install
 
-# Sirva os arquivos com qualquer servidor estático
+# Inicie o servidor local
 npx serve . -l 3000
-
-# Acesse no seu navegador: http://localhost:3000
 ```
-
-> **Nota:** Devido às regras de segurança de Módulos ES (`import`/`export`) do navegador, você não pode simplesmente abrir o `index.html` com um clique duplo. Um servidor local HTTP é obrigatório.
-
-### Comandos de Desenvolvimento
-
-```bash
-npm run lint       # Verificação de qualidade de código (ESLint)
-npm run test       # Testes unitários (Jest)
-npm run test:e2e   # Testes end-to-end (Playwright)
-```
+Acesse `http://localhost:3000` em um navegador compatível com *WebGPU* (ex: Google Chrome 113+ ou Microsoft Edge 113+).
 
 ---
 
-## 🌐 Idiomas Suportados
+## Idiomas de Tradução
 
-A ferramenta detecta automaticamente o idioma falado se você usar a detecção do Whisper, mas para tradução direta suporta:
+A transcrição inicial do áudio detecta o idioma original automaticamente através do modelo Whisper. A conversão de texto suporta os seguintes idiomas nativos de saída:
 
-| Idioma | Código |
-|--------|--------|
-| 🇺🇸 Inglês | `en` |
-| 🇧🇷 Português (BR) | `pt` |
-| 🇪🇸 Espanhol | `es` |
-| 🇫🇷 Francês | `fr` |
-| 🇩🇪 Alemão | `de` |
-| 🇮🇹 Italiano | `it` |
-| 🇯🇵 Japonês | `ja` |
+- Inglês (en)
+- Português - BR (pt)
+- Espanhol (es)
+- Francês (fr)
+- Alemão (de)
+- Italiano (it)
+- Japonês (ja)
 
 ---
 
-## 📋 Requisitos de Sistema
+## Licença
 
-| Requisito | Detalhes |
-|-----------|----------|
-| **Navegador** | Chrome 94+ ou Edge 94+ (WebCodecs) |
-| **RAM** | Mínimo 4 GB. Recomendado 8 GB+ (para Whisper Small) |
-| **Internet** | Apenas na primeira execução (download do modelo ~75–500 MB) e para tradução |
-| **GPU (opcional)** | WebGPU acelera a transcrição significativamente |
-
----
-
-## 📄 Licença
-
-Este projeto está licenciado sob a [MIT License](LICENSE).
-
----
+Este software é distribuído sob a Licença [MIT](LICENSE).
 
 <div align="center">
-
-Feito por <a href="https://github.com/Higor1107">Higor</a>
-
+  <br>
+  Desenvolvido e mantido por <a href="https://github.com/Higor1107">Higor</a>.
 </div>
