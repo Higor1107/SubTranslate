@@ -7,6 +7,7 @@
 import { formatSubtitles } from './subtitle-formatter.js';
 
 let worker = null;
+let currentReject = null;
 
 export class CohereTranscriber {
     constructor() {
@@ -14,10 +15,13 @@ export class CohereTranscriber {
     }
 
     abort() {
-        if (this.worker) {
-            this.worker.terminate();
-            this.worker = null;
-            this.initialized = false;
+        if (worker) {
+            worker.terminate();
+            worker = null;
+        }
+        if (currentReject) {
+            currentReject(new Error('Processamento abortado.'));
+            currentReject = null;
         }
     }
 
@@ -31,6 +35,7 @@ export class CohereTranscriber {
         const modelId = MODEL_MAP[modelSize] || MODEL_MAP['base'];
 
         return new Promise((resolve, reject) => {
+            currentReject = reject;
             if (!worker) {
                 worker = new Worker('js/transcription-worker.js', { type: 'module' });
             }
@@ -54,10 +59,12 @@ export class CohereTranscriber {
                     this.device = payload.device;
                     console.log(`[CohereTranscriber] Modelo carregado via ${this.device}`);
                     worker.removeEventListener('message', handler);
+                    currentReject = null;
                     resolve(this.device);
                 }
                 if (type === 'error') {
                     worker.removeEventListener('message', handler);
+                    currentReject = null;
                     reject(new Error(payload));
                 }
             };
@@ -69,7 +76,9 @@ export class CohereTranscriber {
 
     async transcribe(audioData, language, onProgress) {
         return new Promise((resolve, reject) => {
+            currentReject = reject;
             if (!worker) {
+                currentReject = null;
                 reject(new Error('Worker não inicializado.'));
                 return;
             }
@@ -98,10 +107,12 @@ export class CohereTranscriber {
                          words.push({ text: payload.text, timestamp: [0, Math.min(durationSecs, 30)] });
                     }
                     const segments = formatSubtitles(words);
+                    currentReject = null;
                     resolve({ text: payload.text, segments });
                 }
                 if (type === 'error') {
                     worker.removeEventListener('message', handler);
+                    currentReject = null;
                     reject(new Error(payload));
                 }
             };
