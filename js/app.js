@@ -25,6 +25,7 @@ const state = {
 };
 
 let isCancelled = false;
+let pipelineAbortController = null;
 
 // ─── DOM ────────────────────────────────────────────────────────
 const $ = (s) => document.querySelector(s);
@@ -149,6 +150,9 @@ function cancelPipeline() {
     if (!state.processing) return;
     isCancelled = true;
     transcriber.abort();
+    if (pipelineAbortController) {
+        pipelineAbortController.abort();
+    }
 }
 
 // ─── Pipeline ───────────────────────────────────────────────────
@@ -170,6 +174,8 @@ async function startPipeline() {
     if (state.processing || !state.videoFile) return;
     state.processing = true;
     isCancelled = false;
+    pipelineAbortController = new AbortController();
+    const signal = pipelineAbortController.signal;
 
     dom.btnProcess.disabled = true;
     dom.settingsSection.style.display = 'none';
@@ -243,7 +249,7 @@ async function startPipeline() {
 
         const audioData = await extractAudio(state.videoFile, (p) => {
             updateProgress(`Extraindo áudio... ${Math.round(p * 100)}%`, stepProgress('extract', p));
-        });
+        }, signal);
         updateStep('step-extract', 'done');
         console.timeEnd('[Pipeline] 2. Extração de Áudio');
 
@@ -292,7 +298,8 @@ async function startPipeline() {
             rawSegments, sourceLang, targetLang,
             (info) => {
                 updateProgress(`Traduzindo... ${Math.round(info.percent * 100)}%`, stepProgress('translate', info.percent));
-            }
+            },
+            signal
         );
 
         state.subtitles.translated = translatedSegments;

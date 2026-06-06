@@ -21,9 +21,10 @@ class MultiEngineTranslator {
      * @param {string} sourceLang 
      * @param {string} targetLang 
      * @param {Function} [onProgress] 
+     * @param {AbortSignal} [signal]
      * @returns {Promise<Array>}
      */
-    async translateSegments(segments, sourceLang, targetLang, onProgress) {
+    async translateSegments(segments, sourceLang, targetLang, onProgress, signal) {
         if (!segments.length) return [];
         
         const totalSegs = segments.length;
@@ -34,10 +35,11 @@ class MultiEngineTranslator {
         console.log(`[Translator] Iniciando tradução CONTEXTUAL de ${totalSegs} segmentos (Janelas de ${BATCH_SIZE}) - Engine: ${this.preferredEngine}`);
 
         for (let i = 0; i < totalSegs; i += BATCH_SIZE) {
+            if (signal?.aborted) throw new Error('Processamento abortado.');
             const batch = segments.slice(i, i + BATCH_SIZE);
             
             try {
-                const translatedTexts = await this.translateBatch(batch, sourceLang, targetLang);
+                const translatedTexts = await this.translateBatch(batch, sourceLang, targetLang, signal);
                 for (let j = 0; j < batch.length; j++) {
                     result.push({ ...batch[j], text: translatedTexts[j] || batch[j].text });
                 }
@@ -65,7 +67,7 @@ class MultiEngineTranslator {
     /**
      * Tenta traduzir um LOTE de textos utilizando os engines disponíveis.
      */
-    async translateBatch(batch, sourceLang, targetLang) {
+    async translateBatch(batch, sourceLang, targetLang, signal) {
         let translations = null;
         const enginesToTry = [this.preferredEngine];
         if (this.preferredEngine !== 'chatgpt') enginesToTry.push('chatgpt');
@@ -77,11 +79,11 @@ class MultiEngineTranslator {
 
             try {
                 if (engine === 'chatgpt' && this.keys.openai) {
-                    translations = await this.translateBatchChatGPT(batch, sourceLang, targetLang);
+                    translations = await this.translateBatchChatGPT(batch, sourceLang, targetLang, signal);
                 } else if (engine === 'deepl' && this.keys.deepl) {
-                    translations = await this.translateBatchDeepL(batch, sourceLang, targetLang);
+                    translations = await this.translateBatchDeepL(batch, sourceLang, targetLang, signal);
                 } else if (engine === 'google') {
-                    translations = await this.translateBatchGoogle(batch, sourceLang, targetLang);
+                    translations = await this.translateBatchGoogle(batch, sourceLang, targetLang, signal);
                 }
             } catch (e) {
                 console.warn(`[Translator] Lote falhou na engine ${engine}:`, e.message);
@@ -95,11 +97,12 @@ class MultiEngineTranslator {
         return translations.map(t => this.preserveMarkers(t));
     }
 
-    async translateBatchChatGPT(batch, sourceLang, targetLang) {
+    async translateBatchChatGPT(batch, sourceLang, targetLang, signal) {
         const promptBlock = batch.map((seg, i) => `[${i}] ${seg.text}`).join('\n');
         
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
+            signal: signal,
             headers: {
                 'Authorization': `Bearer ${this.keys.openai}`,
                 'Content-Type': 'application/json'
@@ -125,10 +128,11 @@ class MultiEngineTranslator {
         return this.parseBatchResponse(output, batch.length);
     }
 
-    async translateBatchDeepL(batch, sourceLang, targetLang) {
+    async translateBatchDeepL(batch, sourceLang, targetLang, signal) {
         const texts = batch.map(seg => seg.text);
         const response = await fetch('https://api-free.deepl.com/v2/translate', {
             method: 'POST',
+            signal: signal,
             headers: {
                 'Authorization': `DeepL-Auth-Key ${this.keys.deepl}`,
                 'Content-Type': 'application/json'
@@ -147,12 +151,13 @@ class MultiEngineTranslator {
         return data.translations.map(t => t.text);
     }
 
-    async translateBatchGoogle(batch, sourceLang, targetLang) {
+    async translateBatchGoogle(batch, sourceLang, targetLang, signal) {
         // Google free tier API chokes on large arrays, we translate individually in parallel but with rate limiting
         const translations = [];
         for (const seg of batch) {
+            if (signal?.aborted) throw new Error('Processamento abortado.');
             const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceLang}&tl=${targetLang}&dt=t&q=${encodeURIComponent(seg.text)}`;
-            const response = await fetch(url);
+            const response = await fetch(url, { signal });
             if (!response.ok) throw new Error('Google Translate request failed');
             const data = await response.json();
             translations.push(data[0].map(item => item[0]).join('').trim());
