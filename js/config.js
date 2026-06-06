@@ -9,7 +9,8 @@ class ConfigManager {
         if (saved) {
             try {
                 return JSON.parse(saved);
-            } catch (_e) {
+            } catch (e) {
+                console.debug('No config found', e);
                 return this.getDefaults();
             }
         }

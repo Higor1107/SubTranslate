@@ -1,6 +1,6 @@
+/* eslint-disable no-console */
 /**
  * Transcriber — Interface com o Web Worker de transcrição.
- * /* eslint-disable no-console */
  * Atualizado para Stack 2026: Pipeline WebGPU integrado e formatador Netflix.
  */
 

@@ -1,6 +1,6 @@
+/* eslint-disable no-console */
 /**
  * SubTranslate Web — Aplicação principal.
- * /* eslint-disable no-console */
  * Stack 2026: Orquestração WebGPU + MultiEngine + FFmpeg.wasm
  */
 

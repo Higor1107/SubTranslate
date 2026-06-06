@@ -1,6 +1,6 @@
+/* eslint-disable no-console */
 /**
  * Web Worker para transcrição com Whisper via Transformers.js.
- * /* eslint-disable no-console */
  * Atualizado para Stack 2026: Suporte a WebGPU para inferência hiper-rápida.
  */
 import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.1.0';
