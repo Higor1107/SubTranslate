@@ -3,6 +3,18 @@
  * Ordem de Fallback: ChatGPT -> DeepL -> Google Translate (scraper).
  */
 
+async function abortableDelay(ms, signal) {
+    return new Promise(resolve => {
+        const timeout = setTimeout(resolve, ms);
+        if (signal) {
+            signal.addEventListener('abort', () => {
+                clearTimeout(timeout);
+                resolve();
+            }, { once: true });
+        }
+    });
+}
+
 class MultiEngineTranslator {
     constructor(apiKeys = {}, preferredEngine = 'chatgpt') {
         this.keys = {
@@ -58,7 +70,7 @@ class MultiEngineTranslator {
                 });
             }
             
-            await new Promise(resolve => setTimeout(resolve, 500)); 
+            await abortableDelay(500, signal); 
         }
 
         return result;
@@ -161,7 +173,7 @@ class MultiEngineTranslator {
             if (!response.ok) throw new Error('Google Translate request failed');
             const data = await response.json();
             translations.push(data[0].map(item => item[0]).join('').trim());
-            await new Promise(r => setTimeout(r, 200)); // Rate limit
+            await abortableDelay(200, signal); // Rate limit
         }
         return translations;
     }

@@ -337,10 +337,8 @@ async function startPipeline() {
             dom.settingsSection.style.display = 'block';
             dom.progressBar.style.background = '';
             
-            // Re-instanciar o transcriber caso tenha sido abortado (destruído o worker)
-            if (isCancelled && !transcriber.initialized) {
-                transcriber.init();
-            }
+            ['step-model', 'step-extract', 'step-transcribe', 'step-timing', 'step-translate', 'step-generate']
+                .forEach(id => updateStep(id, 'pending'));
         }, 3000);
     }
 }
