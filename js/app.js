@@ -6,9 +6,7 @@
 import { extractAudio } from './audio-extractor.js';
 import { CohereTranscriber, getAvailableModels } from './transcriber.js';
 import { MultiEngineTranslator } from './translator.js';
-import { refineTimings } from './timing-refiner.js';
 import { generateSRT, generateVTT, createBlobURL, downloadFile } from './subtitle-generator.js';
-import { burnSubtitles } from './video-burner.js';
 import { ConfigManager } from './config.js';
 
 // ─── Instâncias e Estado ──────────────────────────────────────────────
@@ -54,12 +52,6 @@ const dom = {
     videoPlayer: $('#video-player'),
     subtitleList: $('#subtitle-list'),
     btnNew: $('#btn-new'),
-    burnSection: $('#burn-section'),
-    btnBurn: $('#btn-burn'),
-    burnProgress: $('#burn-progress'),
-    burnBar: $('#burn-bar'),
-    burnLabel: $('#burn-label'),
-    burnPercent: $('#burn-percent'),
 };
 
 // ─── Inicialização ─────────────────────────────────────────────
@@ -68,7 +60,6 @@ function init() {
     setupSettings();
     setupResultTabs();
     setupNewButton();
-    setupBurn();
     initUI();
 }
 
@@ -192,60 +183,82 @@ async function startPipeline() {
         updateStep('step-model', 'active');
         updateProgress('Baixando modelo Whisper AI...', stepProgress('model', 0));
         dom.modelProgress.style.display = 'block';
+        console.time('[Pipeline] Total');
+        console.time('[Pipeline] 1. Carregamento do Modelo');
 
+        let lastModelPct = 0;
         const device = await transcriber.loadModel(modelSize, (info) => {
             if (info.status === 'downloading') {
-                const pct = Math.round(info.progress);
-                dom.modelProgressBar.style.width = pct + '%';
-                dom.modelProgressText.textContent = `${info.file?.split('/').pop() || ''} ${pct}%`;
-                updateProgress(`Baixando modelo... ${pct}%`, stepProgress('model', pct / 100));
+                if (typeof info.progress === 'number' && !isNaN(info.progress) && info.progress > 0) {
+                    lastModelPct = Math.round(info.progress);
+                } else {
+                    // Sem content-length do servidor, simula progresso ativo para o usuário não achar que travou
+                    lastModelPct = Math.min(99, lastModelPct + 1);
+                }
+                dom.modelProgressBar.style.width = lastModelPct + '%';
+                dom.modelProgressText.textContent = `${info.file?.split('/').pop() || ''} ${lastModelPct}%`;
+                updateProgress(`Baixando modelo... ${lastModelPct}%`, stepProgress('model', lastModelPct / 100));
             }
             if (info.status === 'ready') {
                 dom.modelProgressBar.style.width = '100%';
                 dom.modelProgressText.textContent = 'Modelo carregado ✓';
+                updateProgress(`Baixando modelo... 100%`, stepProgress('model', 1));
             }
         });
         console.log(`Pipeline usará backend: ${device}`);
 
         dom.modelProgress.style.display = 'none';
         updateStep('step-model', 'done');
+        console.timeEnd('[Pipeline] 1. Carregamento do Modelo');
 
         // ── Step 2: Extrair áudio ──
         updateStep('step-extract', 'active');
         updateProgress('Extraindo áudio...', stepProgress('extract', 0));
+        console.time('[Pipeline] 2. Extração de Áudio');
 
         const audioData = await extractAudio(state.videoFile, (p) => {
             updateProgress(`Extraindo áudio... ${Math.round(p * 100)}%`, stepProgress('extract', p));
         });
         updateStep('step-extract', 'done');
+        console.timeEnd('[Pipeline] 2. Extração de Áudio');
 
         // ── Step 3: Transcrever ──
         updateStep('step-transcribe', 'active');
         updateProgress('Transcrevendo via IA...', stepProgress('transcribe', 0));
+        console.time('[Pipeline] 3. Transcrição (Whisper)');
 
-        const { segments: rawSegments } = await transcriber.transcribe(audioData, sourceLang, (p) => {
-            updateProgress(`Transcrevendo... ${Math.round(p * 100)}%`, stepProgress('transcribe', p));
+        let lastTranscribePct = 0;
+        const { segments: rawSegments } = await transcriber.transcribe(audioData, sourceLang, (p, chunkText) => {
+            lastTranscribePct = Math.max(lastTranscribePct, Math.round(p * 100));
+            const textPreview = chunkText ? ` "${chunkText.substring(0, 35)}..."` : '';
+            updateProgress(`Transcrevendo: ${lastTranscribePct}%${textPreview}`, stepProgress('transcribe', p));
         });
 
         if (!rawSegments || !rawSegments.length) {
             throw new Error('Nenhuma fala detectada no vídeo.');
         }
         updateStep('step-transcribe', 'done');
+        console.timeEnd('[Pipeline] 3. Transcrição (Whisper)');
 
         // ── Step 4: Refinar timing ──
         updateStep('step-timing', 'active');
         updateProgress('Refinando sincronização...', stepProgress('timing', 0));
+        console.time('[Pipeline] 4. Refinamento (Timing)');
 
-        const refinedSegments = refineTimings(rawSegments);
-        state.subtitles.original = refinedSegments;
+        // Step 4: Formatting (Acontece internamente no Transcriber, apenas feedback visual)
+        updateStep('step-timing', 'active');
+        await new Promise(r => setTimeout(r, 500)); 
         updateStep('step-timing', 'done');
+        state.subtitles.original = rawSegments;
+        console.timeEnd('[Pipeline] 4. Refinamento (Timing)');
 
         // ── Step 5: Traduzir ──
         updateStep('step-translate', 'active');
         updateProgress('Traduzindo legendas...', stepProgress('translate', 0));
+        console.time('[Pipeline] 5. Tradução Textual');
 
         const translatedSegments = await translator.translateSegments(
-            refinedSegments, sourceLang, targetLang,
+            rawSegments, sourceLang, targetLang,
             (info) => {
                 updateProgress(`Traduzindo... ${Math.round(info.percent * 100)}%`, stepProgress('translate', info.percent));
             }
@@ -253,18 +266,20 @@ async function startPipeline() {
 
         state.subtitles.translated = translatedSegments;
         updateStep('step-translate', 'done');
+        console.timeEnd('[Pipeline] 5. Tradução Textual');
 
         // ── Step 6: Gerar legendas ──
         updateStep('step-generate', 'active');
         updateProgress('Gerando arquivos SRT e VTT...', stepProgress('generate', 0));
 
-        state.srt.original = generateSRT(refinedSegments);
+        state.srt.original = generateSRT(rawSegments);
         state.srt.translated = generateSRT(translatedSegments);
-        state.vtt.original = generateVTT(refinedSegments);
+        state.vtt.original = generateVTT(rawSegments);
         state.vtt.translated = generateVTT(translatedSegments);
 
         updateStep('step-generate', 'done');
         updateProgress('✓ Processamento concluído!', 100);
+        console.timeEnd('[Pipeline] Total');
 
         setTimeout(() => showResults(), 800);
 
@@ -364,68 +379,6 @@ function setupDownloads() {
     bind('btn-dl-vtt-original', state.vtt.original, `${baseName}_en.vtt`);
 }
 
-// ─── Gravação de Vídeo ──────────────────────────────────────────
-function setupBurn() {
-    if (!dom.btnBurn) return;
-
-    dom.btnBurn.addEventListener('click', async () => {
-        if (!state.videoFile || !state.srt.translated) return;
-
-        dom.btnBurn.disabled = true;
-        dom.btnBurn.textContent = 'Gravando Legendas (Isso pode demorar)...';
-        dom.burnProgress.style.display = 'block';
-        dom.burnBar.style.width = '0%';
-
-        try {
-            const videoBlobURL = URL.createObjectURL(state.videoFile);
-            
-            const { blob } = await burnSubtitles(
-                videoBlobURL,
-                state.subtitles.translated,
-                (info) => {
-                    const pct = Math.min(Math.round(info.percent * 100), 100);
-                    dom.burnBar.style.width = pct + '%';
-                    dom.burnLabel.textContent = info.label || `Gravando vídeo...`;
-                    dom.burnPercent.textContent = pct + '%';
-                }
-            );
-
-            // Trigger download automatically
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = state.videoFile.name.replace(/\.[^.]+$/, '') + '_legendado.mp4';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            URL.revokeObjectURL(videoBlobURL);
-
-            dom.burnLabel.textContent = '✓ Vídeo com legenda gerado e baixado!';
-            dom.burnPercent.textContent = '100%';
-            dom.burnBar.style.width = '100%';
-
-        } catch (err) {
-            console.error('[Burn] Error:', err);
-            dom.burnLabel.textContent = `Erro: ${err.message}`;
-            dom.burnBar.style.width = '0%';
-            dom.burnBar.style.background = 'var(--error)';
-        } finally {
-            dom.btnBurn.disabled = false;
-            dom.btnBurn.innerHTML = `
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/>
-                    <line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/>
-                    <line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/>
-                    <line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>
-                    <line x1="17" y1="17" x2="22" y2="17"/>
-                </svg>
-                Gravar Legendas no Vídeo
-            `;
-        }
-    });
-}
-
 // ─── Novo Vídeo ──────────────────────────────────────────────────
 function setupNewButton() {
     dom.btnNew.addEventListener('click', resetApp);
@@ -462,12 +415,6 @@ function resetApp() {
     dom.progressPercent.textContent = '0%';
     dom.progressLabel.textContent = 'Preparando...';
     dom.modelProgress.style.display = 'none';
-
-    dom.burnProgress.style.display = 'none';
-    dom.burnBar.style.width = '0%';
-    dom.burnBar.style.background = '';
-    dom.burnLabel.textContent = 'Preparando...';
-    dom.burnPercent.textContent = '0%';
 
     dom.btnProcess.disabled = false;
     window.scrollTo({ top: 0, behavior: 'smooth' });

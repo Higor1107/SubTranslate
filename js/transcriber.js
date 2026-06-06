@@ -1,7 +1,9 @@
 /**
  * Transcriber — Interface com o Web Worker de transcrição.
- * Atualizado para Stack 2026: Pipeline WebGPU integrado.
+ * Atualizado para Stack 2026: Pipeline WebGPU integrado e formatador Netflix.
  */
+
+import { formatSubtitles } from './subtitle-formatter.js';
 
 let worker = null;
 
@@ -11,11 +13,11 @@ export class CohereTranscriber {
     }
 
     async loadModel(modelSize = 'base', onProgress) {
-        // Usa os modelos oficiais mantidos pela comunidade que suportam WebGPU
+        // Usa os novos modelos otimizados da comunidade para WebGPU v3
         const MODEL_MAP = {
-            'tiny': 'Xenova/whisper-tiny',
-            'base': 'Xenova/whisper-base',
-            'small': 'Xenova/whisper-small',
+            'tiny': 'onnx-community/whisper-tiny',
+            'base': 'onnx-community/whisper-base',
+            'small': 'onnx-community/whisper-small',
         };
         const modelId = MODEL_MAP[modelSize] || MODEL_MAP['base'];
 
@@ -66,12 +68,29 @@ export class CohereTranscriber {
             const durationSecs = audioData.length / 16000;
             console.log(`[CohereTranscriber] Áudio: ${audioData.length} amostras (${durationSecs.toFixed(1)}s)`);
 
+            let chunkCounter = 0;
+            let currentProgress = 0;
+
             const handler = (e) => {
                 const { type, payload } = e.data;
 
+                if (type === 'log') {
+                    console.log(payload);
+                }
+
+                if (type === 'transcription-progress') {
+                    if (onProgress) {
+                        onProgress(payload.progress, null);
+                    }
+                }
+
                 if (type === 'transcription-done') {
                     worker.removeEventListener('message', handler);
-                    const segments = this.buildSegments(payload, durationSecs);
+                    const words = payload.chunks || [];
+                    if (words.length === 0 && payload.text) {
+                         words.push({ text: payload.text, timestamp: [0, Math.min(durationSecs, 30)] });
+                    }
+                    const segments = formatSubtitles(words);
                     resolve({ text: payload.text, segments });
                 }
                 if (type === 'error') {
@@ -90,122 +109,7 @@ export class CohereTranscriber {
         });
     }
 
-    // ─── Lógica de Segmentação (Herança da v1) ────────────────────────────────
 
-    buildSegments(result, audioDuration) {
-        const MAX_CHARS = 50;              
-        const MIN_DURATION = 0.5;          
-        const CHARS_PER_SEC = 15;          
-
-        if (!result?.chunks?.length) {
-            if (result?.text?.trim()) {
-                return [{ index: 1, start: 0, end: Math.min(audioDuration, 30), text: result.text.trim() }];
-            }
-            return [];
-        }
-
-        const rawSegs = [];
-        for (const chunk of result.chunks) {
-            const text = (chunk.text || '').trim();
-            if (!text) continue;
-
-            const ts = chunk.timestamp;
-            let start;
-            let end;
-
-            if (ts && Array.isArray(ts)) {
-                start = (ts[0] !== null) ? Number(ts[0]) : 0;
-                end = (ts[1] !== null) ? Number(ts[1]) : null;
-
-                if (end === null || isNaN(end) || end <= start) {
-                    end = start + Math.max(text.length / CHARS_PER_SEC, MIN_DURATION);
-                    end = Math.min(end, audioDuration);
-                }
-            } else {
-                start = rawSegs.length > 0 ? rawSegs[rawSegs.length - 1].end + 0.1 : 0;
-                end = start + Math.max(text.length / CHARS_PER_SEC, MIN_DURATION);
-            }
-
-            if (isNaN(start)) start = 0;
-            if (isNaN(end) || end <= start) end = start + 1;
-
-            rawSegs.push({ start, end, text });
-        }
-
-        const segments = [];
-        for (const seg of rawSegs) {
-            if (seg.text.length <= MAX_CHARS) {
-                segments.push({
-                    index: segments.length + 1,
-                    start: +seg.start.toFixed(3),
-                    end: +seg.end.toFixed(3),
-                    text: seg.text,
-                });
-            } else {
-                const parts = this.splitSentence(seg.text, MAX_CHARS);
-                this.spreadTiming(parts, seg.start, seg.end, segments, MIN_DURATION);
-            }
-        }
-        return segments;
-    }
-
-    splitSentence(text, maxChars) {
-        const parts = text.split(/(?<=[.!?])\s+/).filter(Boolean);
-        const result = [];
-        for (const part of parts) {
-            if (part.length > maxChars) {
-                const subParts = part.split(/(?<=,)\s+/).filter(Boolean);
-                for (const sub of subParts) {
-                    if (sub.length > maxChars) {
-                        result.push(...this.splitByWords(sub, maxChars));
-                    } else {
-                        result.push(sub.trim());
-                    }
-                }
-            } else {
-                result.push(part.trim());
-            }
-        }
-        return result.filter(Boolean);
-    }
-
-    splitByWords(text, maxChars) {
-        const words = text.split(/\s+/);
-        const parts = [];
-        let current = '';
-        for (const word of words) {
-            const test = current ? `${current} ${word}` : word;
-            if (test.length > maxChars && current) {
-                parts.push(current);
-                current = word;
-            } else {
-                current = test;
-            }
-        }
-        if (current) parts.push(current);
-        return parts;
-    }
-
-    spreadTiming(parts, totalStart, totalEnd, segments, minDuration) {
-        if (parts.length === 0) return;
-        const totalChars = parts.reduce((s, p) => s + p.length, 0);
-        const totalDuration = totalEnd - totalStart;
-        let cursor = totalStart;
-
-        for (const part of parts) {
-            const ratio = part.length / totalChars;
-            const duration = Math.max(totalDuration * ratio, minDuration);
-            const end = Math.min(cursor + duration, totalEnd);
-
-            segments.push({
-                index: segments.length + 1,
-                start: +cursor.toFixed(3),
-                end: +end.toFixed(3),
-                text: part,
-            });
-            cursor = end;
-        }
-    }
 }
 
 export function getAvailableModels() {

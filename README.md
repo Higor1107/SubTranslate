@@ -24,20 +24,21 @@
 
 ## 🚀 Sobre o Projeto
 
-O **SubTranslate** é uma ferramenta open-source que permite **transcrever, traduzir e embutir (burn-in)** legendas em vídeos de forma totalmente automática, executada inteiramente dentro do seu navegador.
+O **SubTranslate Pro** é uma ferramenta open-source focada na criação profissional de legendas para vídeos, séries e filmes, executada inteiramente dentro do seu navegador.
 
-A arquitetura utiliza a **WebCodecs API** nativa do navegador para a renderização de legendas, garantindo um processo até 10x mais rápido que abordagens tradicionais baseadas em FFmpeg, sem erros de memória e com aceleração de hardware (GPU) ativa de fábrica.
+A arquitetura utiliza o motor **WebGPU V3** nativo do navegador para rodar IA pesada com aceleração de hardware (GPU) ativa de fábrica, garantindo um processo off-line e sem custos com servidores.
 
-### ✨ Destaques
+### ✨ Destaques da Edição Pro (Cinema)
 
 | Feature | Descrição |
 |---------|-----------|
-| 🧠 **IA Local (Whisper)** | Usa o `Transformers.js` para rodar o Whisper (OpenAI) diretamente no seu PC via WebGPU/WASM. |
-| ⚡ **WebCodecs Nativo** | A gravação de legendas (burn-in) é feita nativamente pelo navegador, sem travamentos. |
-| 🛡️ **Privacidade Absoluta** | O arquivo de vídeo nunca sai do seu computador. Todo o processamento é client-side. |
-| 🌍 **Multi-Engine de Tradução** | Suporte a ChatGPT, DeepL e Google Translate com fallback automático. |
-| 📥 **Exportação Flexível** | Baixe o `.mp4` com legenda gravada na imagem ou os arquivos brutos em `.srt` / `.vtt`. |
-| 🔄 **Fallback Inteligente** | Se o modelo principal falhar por falta de memória, o sistema tenta automaticamente um modelo menor. |
+| 🧠 **IA Local WebGPU V3** | Usa o `Transformers.js` (Pipeline V3) para rodar o Whisper (OpenAI) diretamente na sua placa de vídeo via WebGPU. |
+| 🎬 **Formatação Netflix** | Formata os tempos e caracteres no padrão da indústria: no máximo 42 caracteres por linha, com durações mínimas absolutas. |
+| ✂️ **Filtro de Ruído Inteligente** | Filtra e remove agressivamente "Closed Captions" indesejados da IA, como `[risos]`, `(música)`, etc., deixando apenas a fala limpa. |
+| 🪡 **Stride Stitching** | Fatiamento inteligente de áudio com sobreposição de 2 segundos que impede palavras de serem cortadas ao meio, mantendo a sincronia perfeita do modelo *Base*. |
+| 📝 **Tradução Contextual por Lotes** | Agrupa até 15 legendas numa única janela de contexto antes de enviar para a API, para que o ChatGPT ou DeepL entendam a cena, os pronomes e o ritmo (15x mais rápido). |
+| 🛡️ **Privacidade** | Seu arquivo de vídeo/áudio **nunca sai** do seu computador. Apenas o texto (legenda) viaja para tradução. |
+| 📥 **Exportação Padrão** | Exporte os arquivos brutos em `.srt` ou `.vtt` com um clique. |
 
 ---
 
@@ -47,9 +48,9 @@ A arquitetura utiliza a **WebCodecs API** nativa do navegador para a renderizaç
 |--------|-----------|--------|
 | **Transcrição** | [Transformers.js](https://huggingface.co/docs/transformers.js) (Whisper) | Speech-to-text gerando tempos exatos das falas |
 | **Pipeline Core** | Web Workers | Inferência off-thread para manter a interface fluida |
-| **Tradução** | ChatGPT / DeepL / Google Translate | Tradução com fallback multi-engine |
-| **Burn-in** | WebCodecs + mp4-muxer + Canvas | Desenha o texto frame-a-frame usando aceleração gráfica |
-| **Interface** | Vanilla JS / CSS Moderno | Design System limpo com suporte nativo a Tema Escuro |
+| **Tradução Contextual** | ChatGPT / DeepL / Google Translate | Tradução em bloco/lote (15 frases) para preservar coesão |
+| **Exportação** | JS Blob API | Gera e encapsula legendas limpas e perfeitamente ritmadas em arquivos `.srt`/`.vtt` |
+| **Interface** | Vanilla JS / CSS Moderno | Tema Escuro (Cinema), minimalista, limpo e direto ao ponto |
 
 > 📖 **Para desenvolvedores:** Veja o [ARCHITECTURE.md](ARCHITECTURE.md) para documentação técnica detalhada de cada módulo.
 

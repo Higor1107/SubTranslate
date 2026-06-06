@@ -2,10 +2,17 @@
  * Web Worker para transcrição com Whisper via Transformers.js.
  * Atualizado para Stack 2026: Suporte a WebGPU para inferência hiper-rápida.
  */
-import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
+import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.1.0';
 
 // Configurações do ambiente
 env.allowLocalModels = false;
+env.backends.onnx.wasm.numThreads = Math.max(1, (navigator.hardwareConcurrency || 4) - 1);
+
+// Força o navegador a utilizar a GPU dedicada (ex: RTX 4050) em vez da integrada
+if (!env.backends.onnx.webgpu) {
+    env.backends.onnx.webgpu = {};
+}
+env.backends.onnx.webgpu.powerPreference = 'high-performance';
 
 let transcriber = null;
 
@@ -24,6 +31,7 @@ self.onmessage = async (e) => {
                 payload.modelId,
                 {
                     device: device,
+                    dtype: device === 'webgpu' ? { encoder_model: 'fp32', decoder_model_merged: 'q4' } : 'q8', // fp32 no encoder previne crashes nas placas, q4 voa no decoder
                     progress_callback: (data) => {
                         self.postMessage({ type: 'model-progress', payload: data });
                     },
@@ -39,6 +47,7 @@ self.onmessage = async (e) => {
                     payload.modelId,
                     {
                         device: 'wasm',
+                        dtype: 'q8',
                         progress_callback: (data) => {
                             self.postMessage({ type: 'model-progress', payload: data });
                         },
@@ -48,12 +57,13 @@ self.onmessage = async (e) => {
             } catch (fallbackErr) {
                 console.warn('[Worker] Falha no wasm para o modelo original. Tentando fallback para modelo Tiny...', fallbackErr);
                 try {
-                    const fallbackModel = 'Xenova/whisper-tiny';
+                    const fallbackModel = 'onnx-community/whisper-tiny';
                     transcriber = await pipeline(
                         'automatic-speech-recognition',
                         fallbackModel,
                         {
                             device: 'wasm',
+                            dtype: 'q8',
                             progress_callback: (data) => {
                                 self.postMessage({ type: 'model-progress', payload: data });
                             },
@@ -73,17 +83,73 @@ self.onmessage = async (e) => {
             return;
         }
         try {
-            const result = await transcriber(payload.audio, {
-                language: payload.language || 'en',
-                task: 'transcribe',
-                chunk_length_s: 15,
-                stride_length_s: 3,
-                return_timestamps: true, // sentence-level
-                temperature: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0], // fallback parameters to reduce hallucinations
-                no_speech_threshold: 0.6,
-                condition_on_previous_text: false, // Prevents hallucination loops on noisy audio/music
+            const startTime = performance.now();
+            self.postMessage({ type: 'log', payload: `[Worker] Iniciando transcrição de ${payload.audio.length} samples.` });
+
+            const chunk_duration_s = 30;
+            const step_s = 28; // Avança 28s por vez (Gera 2s de sobreposição para não cortar palavras ao meio!)
+            const sample_rate = 16000;
+            const chunk_samples = chunk_duration_s * sample_rate;
+            const step_samples = step_s * sample_rate;
+            
+            const total_chunks = Math.ceil(payload.audio.length / step_samples);
+            
+            let all_chunks = [];
+            let full_text = "";
+            
+            for (let i = 0; i < total_chunks; i++) {
+                const start_sample = i * step_samples;
+                const end_sample = Math.min(start_sample + chunk_samples, payload.audio.length);
+                const chunk_audio = payload.audio.slice(start_sample, end_sample);
+                const start_time = start_sample / sample_rate;
+                
+                // Executa a IA na fatia com sobreposição
+                const result = await transcriber(chunk_audio, {
+                    language: payload.language || 'en',
+                    task: 'transcribe',
+                    return_timestamps: true,
+                    temperature: [0.0, 0.2, 0.4], // Menos margem para alucinações
+                    no_speech_threshold: 0.6, // Mais sensível para rejeitar música e ruído
+                    condition_on_previous_text: false 
+                });
+
+                // Mapeia os chunks corrigindo o timestamp global e aplicando o Stride Stitching
+                if (result.chunks && result.chunks.length > 0) {
+                    for (const c of result.chunks) {
+                        let t0 = c.timestamp[0];
+                        let t1 = c.timestamp[1];
+
+                        // Stride Stitching: Se a palavra começa na área de sobreposição (> 28s), 
+                        // nós a descartamos aqui, pois o próximo chunk vai pegá-la no segundo 0 perfeitamente!
+                        if (t0 !== null && t0 >= step_s && i < total_chunks - 1) {
+                            continue;
+                        }
+
+                        const seg_start = t0 !== null ? t0 + start_time : start_time;
+                        const seg_end = t1 !== null ? t1 + start_time : (end_sample / sample_rate);
+                        
+                        all_chunks.push({ 
+                            text: c.text, 
+                            timestamp: [seg_start, seg_end] 
+                        });
+                        full_text += c.text + " ";
+                    }
+                }
+                
+                // PROGRESSO ABSOLUTO REAL
+                const progressPct = (i + 1) / total_chunks;
+                self.postMessage({ 
+                    type: 'transcription-progress', 
+                    payload: { progress: progressPct } 
+                });
+            }
+
+            const endTime = performance.now();
+            self.postMessage({ type: 'log', payload: `[Worker] Transcrição concluída em ${((endTime - startTime) / 1000).toFixed(2)}s` });
+            self.postMessage({ 
+                type: 'transcription-done', 
+                payload: { text: full_text.trim(), chunks: all_chunks } 
             });
-            self.postMessage({ type: 'transcription-done', payload: result });
         } catch (err) {
             self.postMessage({ type: 'error', payload: err.message });
         }
