@@ -50,13 +50,31 @@ class MultiEngineTranslator {
             if (signal?.aborted) throw new Error('Processamento abortado.');
             const batch = segments.slice(i, i + BATCH_SIZE);
             
-            try {
-                const translatedTexts = await this.translateBatch(batch, sourceLang, targetLang, signal);
+            let translatedTexts = null;
+            let retries = 3;
+            let delay = 1000;
+            
+            while (retries > 0) {
+                try {
+                    translatedTexts = await this.translateBatch(batch, sourceLang, targetLang, signal);
+                    break;
+                } catch (err) {
+                    retries--;
+                    if (retries === 0) {
+                        console.warn(`[Translator] Falha no lote ${i} a ${i+BATCH_SIZE} após tentativas. Usando fallback original.`, err);
+                        break;
+                    }
+                    console.warn(`[Translator] Erro no lote. Retentando em ${delay}ms...`, err);
+                    await abortableDelay(delay, signal);
+                    delay *= 2; // Exponential backoff
+                }
+            }
+            
+            if (translatedTexts) {
                 for (let j = 0; j < batch.length; j++) {
                     result.push({ ...batch[j], text: translatedTexts[j] || batch[j].text });
                 }
-            } catch (err) {
-                console.warn(`[Translator] Falha no lote ${i} a ${i+BATCH_SIZE}. Usando fallback original.`, err);
+            } else {
                 for (let j = 0; j < batch.length; j++) {
                     result.push({ ...batch[j] }); 
                 }
@@ -112,6 +130,12 @@ class MultiEngineTranslator {
     async translateBatchChatGPT(batch, sourceLang, targetLang, signal) {
         const promptBlock = batch.map((seg, i) => `[${i}] ${seg.text}`).join('\n');
         
+        let systemContent = `You are a professional Netflix subtitle translator. Translate the scene dialogue from ${sourceLang} to ${targetLang}. Use context from the whole block to decide gender, pronouns, and tone. STRICT RULES: Return the EXACT same number of lines. Start every translated line with the exact [ID] marker provided. Do not add explanations.`;
+        
+        if (targetLang.toLowerCase() === 'pt' || targetLang.toLowerCase() === 'pt-br') {
+            systemContent = `Você é um tradutor cinematográfico sênior. Traduza o diálogo de ${sourceLang} para Português do Brasil (PT-BR). A tradução deve ser extremamente natural, fluida e coloquial. Adapte gírias e expressões idiomáticas perfeitamente. Mantenha a consistência de gênero e plural com base no contexto da cena inteira. Evite traduções literais do inglês. REGRAS ESTRITAS: Retorne EXATAMENTE o mesmo número de linhas. Inicie cada linha traduzida com o marcador [ID] exato fornecido. Não adicione explicações ou notas.`;
+        }
+
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             signal: signal,
@@ -123,7 +147,7 @@ class MultiEngineTranslator {
                 model: 'gpt-4o-mini',
                 messages: [{
                     role: 'system',
-                    content: `You are a professional Netflix subtitle translator. Translate the scene dialogue from ${sourceLang} to ${targetLang}. Use context from the whole block to decide gender, pronouns, and tone. STRICT RULES: Return the EXACT same number of lines. Start every translated line with the exact [ID] marker provided. Do not add explanations.`
+                    content: systemContent
                 }, {
                     role: 'user',
                     content: promptBlock

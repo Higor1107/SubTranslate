@@ -95,62 +95,80 @@ self.onmessage = async (e) => {
             self.postMessage({ type: 'log', payload: `[Worker] Iniciando transcrição de ${payload.audio.length} samples.` });
 
             const chunk_duration_s = 30;
-            const step_s = 28; // Avança 28s por vez (Gera 2s de sobreposição para não cortar palavras ao meio!)
             const sample_rate = 16000;
             const chunk_samples = chunk_duration_s * sample_rate;
-            const step_samples = step_s * sample_rate;
             
-            const total_chunks = Math.ceil(payload.audio.length / step_samples);
-            
+            const total_samples = payload.audio.length;
             const all_chunks = [];
             let full_text = "";
             
-            for (let i = 0; i < total_chunks; i++) {
+            let current_start_sample = 0;
+            let current_start_time = 0;
+            
+            while (current_start_sample < total_samples) {
                 if (isCancelled) {
                     self.postMessage({ type: 'log', payload: '[Worker] Loop de transcrição abortado graciosamente.' });
-                    return; // Sai silenciosamente, a Promise já foi rejeitada no app.js
+                    return;
                 }
 
-                const start_sample = i * step_samples;
-                const end_sample = Math.min(start_sample + chunk_samples, payload.audio.length);
-                const chunk_audio = payload.audio.slice(start_sample, end_sample);
-                const start_time = start_sample / sample_rate;
+                const end_sample = Math.min(current_start_sample + chunk_samples, total_samples);
+                const chunk_audio = payload.audio.slice(current_start_sample, end_sample);
                 
-                // Executa a IA na fatia com sobreposição
                 const result = await transcriber(chunk_audio, {
                     language: payload.language || 'en',
                     task: 'transcribe',
-                    return_timestamps: true,
-                    temperature: [0.0, 0.2, 0.4], // Menos margem para alucinações
-                    no_speech_threshold: 0.6, // Mais sensível para rejeitar música e ruído
+                    return_timestamps: true, // Revertido para true pois 'word' exige output_attentions=True no modelo
+                    temperature: [0.0, 0.2, 0.4],
+                    no_speech_threshold: 0.4, // Mais sensível (reduzido de 0.6 para não perder falas baixas)
                     condition_on_previous_text: false 
                 });
 
-                // Mapeia os chunks corrigindo o timestamp global e aplicando o Stride Stitching
+                // Limite seguro para aceitar palavras (1 segundo de margem do final do chunk para evitar palavras cortadas ao meio)
+                const is_last_chunk = end_sample >= total_samples;
+                const safe_end_time = is_last_chunk ? chunk_duration_s : chunk_duration_s - 1.0; 
+                
+                let max_accepted_time = 0;
+
                 if (result.chunks && result.chunks.length > 0) {
                     for (const c of result.chunks) {
                         const t0 = c.timestamp[0];
                         const t1 = c.timestamp[1];
 
-                        // Stride Stitching: Se a palavra começa na área de sobreposição (> 28s), 
-                        // nós a descartamos aqui, pois o próximo chunk vai pegá-la no segundo 0 perfeitamente!
-                        if (t0 !== null && t0 >= step_s && i < total_chunks - 1) {
+                        // Se a palavra termina depois da margem de segurança (e não é o último chunk), nós a ignoramos e deixamos pro próximo
+                        if (t1 !== null && t1 > safe_end_time && !is_last_chunk) {
                             continue;
                         }
 
-                        const seg_start = t0 !== null ? t0 + start_time : start_time;
-                        const seg_end = t1 !== null ? t1 + start_time : (end_sample / sample_rate);
+                        const seg_start = t0 !== null ? t0 + current_start_time : current_start_time;
+                        const seg_end = t1 !== null ? t1 + current_start_time : (end_sample / sample_rate);
                         
                         all_chunks.push({ 
                             text: c.text, 
                             timestamp: [seg_start, seg_end] 
                         });
-                        full_text += c.text + " ";
+                        full_text += c.text;
+                        
+                        if (t1 !== null && t1 > max_accepted_time) {
+                            max_accepted_time = t1;
+                        }
                     }
                 }
                 
+                // Se não aceitamos nenhuma palavra (ou silêncio total, ou todas passaram da margem), avançamos quase o chunk todo
+                if (max_accepted_time === 0) {
+                    max_accepted_time = chunk_duration_s - 2.0; 
+                }
+
+                if (is_last_chunk) {
+                    break;
+                }
+
+                // O próximo chunk começa EXATAMENTE onde a última palavra aceita terminou!
+                current_start_time += max_accepted_time;
+                current_start_sample = Math.floor(current_start_time * sample_rate);
+                
                 // PROGRESSO ABSOLUTO REAL
-                const progressPct = (i + 1) / total_chunks;
+                const progressPct = Math.min(current_start_sample / total_samples, 1.0);
                 self.postMessage({ 
                     type: 'transcription-progress', 
                     payload: { progress: progressPct } 

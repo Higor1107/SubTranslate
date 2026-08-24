@@ -192,12 +192,13 @@ async function startPipeline() {
 
     const sourceText = dom.sourceLang.options[dom.sourceLang.selectedIndex].text;
     const targetText = dom.targetLang.options[dom.targetLang.selectedIndex].text;
+    const isNativeCaptioning = sourceLang === targetLang;
 
-    document.getElementById('step-translate-desc').textContent = `De ${sourceText} para ${targetText}`;
-    document.getElementById('tab-translated').textContent = `Traduzido (${targetText})`;
+    document.getElementById('step-translate-desc').textContent = isNativeCaptioning ? `Gerando legenda (sem tradução)` : `De ${sourceText} para ${targetText}`;
+    document.getElementById('tab-translated').textContent = isNativeCaptioning ? `Legenda Nativa (${targetText})` : `Traduzido (${targetText})`;
     document.getElementById('tab-original').textContent = `Original (${sourceText})`;
-    document.getElementById('dl-lang-trans-srt').textContent = `Traduzido (${targetText})`;
-    document.getElementById('dl-lang-trans-vtt').textContent = `Traduzido (${targetText})`;
+    document.getElementById('dl-lang-trans-srt').textContent = isNativeCaptioning ? `Legenda (${targetText})` : `Traduzido (${targetText})`;
+    document.getElementById('dl-lang-trans-vtt').textContent = isNativeCaptioning ? `Legenda (${targetText})` : `Traduzido (${targetText})`;
     document.getElementById('dl-lang-orig-srt').textContent = `Original (${sourceText})`;
     document.getElementById('dl-lang-orig-vtt').textContent = `Original (${sourceText})`;
 
@@ -291,16 +292,24 @@ async function startPipeline() {
 
         // ── Step 5: Traduzir ──
         updateStep('step-translate', 'active');
-        updateProgress('Traduzindo legendas...', stepProgress('translate', 0));
+        updateProgress(isNativeCaptioning ? 'Mapeando legendas nativas...' : 'Traduzindo legendas...', stepProgress('translate', 0));
         console.time('[Pipeline] 5. Tradução Textual');
 
-        const translatedSegments = await translator.translateSegments(
-            rawSegments, sourceLang, targetLang,
-            (info) => {
-                updateProgress(`Traduzindo... ${Math.round(info.percent * 100)}%`, stepProgress('translate', info.percent));
-            },
-            signal
-        );
+        let translatedSegments;
+        
+        if (isNativeCaptioning) {
+            translatedSegments = rawSegments.map(s => ({ ...s })); // bypass translation
+            updateProgress('Gerando legendas nativas...', stepProgress('translate', 1));
+            await new Promise(r => setTimeout(r, 300));
+        } else {
+            translatedSegments = await translator.translateSegments(
+                rawSegments, sourceLang, targetLang,
+                (info) => {
+                    updateProgress(`Traduzindo... ${Math.round(info.percent * 100)}%`, stepProgress('translate', info.percent));
+                },
+                signal
+            );
+        }
 
         state.subtitles.translated = translatedSegments;
         updateStep('step-translate', 'done');
